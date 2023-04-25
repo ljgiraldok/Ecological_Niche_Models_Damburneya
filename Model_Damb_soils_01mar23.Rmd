@@ -1,0 +1,3703 @@
+---
+title: "Damb_edaphic-only_Niche_models"
+author: "Laura J. Giraldo Kalil"
+date: '2023-march-01'
+output: html_document and several raster(tiff), csv, txt and graphic files
+---
+
+
+
+
+Wallace Session 2021-10-015
+
+Edited and personalized by Laura Giraldo Kalil 
+01 march 2023
+
+
+This file contains species niche ecological models from the manuscript "Ecological niche comparison among closely related tree species of Lauraceae using climatic and edaphic data." Submited for its publication in Frontiers of Biogeography
+
+
+The models and the main structure of the file were built with 
+Wallace v2.0.0 for Damburneya ambigens, D. colorata, D. gentlei and D.salicifolia
+usign six soil 
+variables(AWCh,CECSOL, CLYPPT, ORDCDRD, PHIOX, NITROGEN-from soilgrids) at 1km resolution.
+The Environmental raster files are named with the following format: 'Awch.tif'
+
+This script contains the steps for MaxEnt niche modeling, and niche overlap analyses with ecospat and NicheRover. Environmental layers and species occurrence data must be provided and prepared previously by the user. MaxEnt response curves are generated only for the chosen model.
+
+Occurrence data of all species used here can be found in a single file. It is available in the Appendix S2, and it was named here as: "TODAS_filtradas_feb23.csv"
+
+More information: <https://wallaceecomod.github.io/>
+
+
+The function "sdm_threshold" (by Cecina Babish) was used to apply 10 percentile threshold to the predicted model raster. The function is available at: <https://babichmorrowc.github.io/post/2019-04-12-sdm-threshold/>
+================
+
+
+### Package installation
+
+Wallace uses the following R packages that must be installed and loaded
+before starting.
+
+```{r}
+library(spocc)
+library(spThin)
+library(dismo)
+library(rgeos)
+library(ENMeval)
+library(wallace)
+library(here)
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+library(terra)
+library(ade4)
+library(nicheROVER)
+#library(tidyr)
+#library(dplyr)
+library(scales)
+```
+
+
+------------------------------------------------------------------------
+
+## Analysis for *Damburneya ambigens* (Da)
+
+User CSV path with occurrence data. If the CSV file is not in the
+current workspace, change to the correct file path
+(e.g. “/Users/darwin/Documents/occs/”).
+
+```{r}
+# NOTE: provide the folder path of the .csv file
+occs_path <- here("Distr_Nectandras","Ocurrencias_filtradas")
+
+occs_path <- file.path(occs_path,"TODAS_filtradas_feb23.csv")
+
+# get a list of species occurrence data
+userOccs_Da <- occs_userOccs(
+  txtPath = occs_path, 
+  txtName = "TODAS_filtradas_feb23.csv", 
+  txtSep = ",", 
+  txtDec = ".")
+
+occs_Da <- userOccs_Da$Damburneya_ambigens$cleaned
+```
+
+### Save cleaned occurrences data
+Save cleaned occurrences
+
+```{r}
+write.csv(occs_Da,
+          here("Distr_Nectandras","Ocurrencias_filtradas",
+               "cleanoccs_Dambigens.csv"))
+```
+
+
+
+### Obtain environmental data
+
+Using user-specified variables.
+
+```{r}
+## Specify the directory with the environmental variables
+dir_envs_Da <- here("Rasters","Seleccionados","cortados_biosoils")
+envs_path <- file.path(dir_envs_Da, c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'))
+
+# Create environmental object 
+envs_Da <- envs_userEnvs(
+  rasPath = envs_path,
+  rasName = c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'),
+  doBrick = FALSE)
+
+occs_xy_Da <- occs_Da[c('longitude', 'latitude')]
+
+occs_vals_Da <- as.data.frame(raster::extract(envs_Da, occs_xy_Da))
+
+# remove occurrence records with NA environmental values
+occs_Da <- occs_Da[!(rowSums(is.na(occs_vals_Da)) > 1), ]
+
+# also remove variable value rows with NA environmental values
+occs_vals_Da <- na.omit(occs_vals_Da)
+
+# add columns for env variable values for each occurrence record
+occs_Da <- cbind(occs_Da, occs_vals_Da)
+```
+
+### Process environmental data
+
+Sampling of 10000 background points and corresponding environmental data
+using a user provided background extent with a 0.009 degree buffer.
+
+```{r}
+# Load the user provided shapefile or csv file with the desired extent.
+  ##User must input the path to shapefile or csv file and the file name 
+# Define path
+bgPath_Da <- list.files(path='C:/Users/Laura G/Documents/SIG_DAMBURNEYA/Poligonos/M_pol/Dambigens_M',  full.names = TRUE)
+
+bgExt_Da <- penvs_userBgExtent(
+  bgShp_path = paste0(bgPath_Da,"M_Dambigens", ".shp"),
+  bgShp_name = paste0("M_Dambigens", c(".shp", ".shx", ".dbf")),
+  userBgBuf = 0.009,
+  occs = occs_Da)
+
+# Mask environmental data to provided extent
+bgMask_Da <- penvs_bgMask(
+  occs = occs_Da,
+  envs = envs_Da,
+  bgExt = bgExt_Da)
+
+# Sample background points from the provided area
+bgSample_Da <- penvs_bgSample(
+  occs = occs_Da,
+  bgMask =  bgMask_Da,
+  bgPtsNum = 10000)
+
+# Extract values of environmental layers for each background point
+bgEnvsVals_Da <- as.data.frame(raster::extract(bgMask_Da,  bgSample_Da))
+
+##Add extracted values to background points table
+bgEnvsVals_Da <- cbind(scientific_name = paste0("bg_", "Damburneya ambigens"), bgSample_Da,
+                            occID = NA, year = NA, institution_code = NA, country = NA,
+                            state_province = NA, locality = NA, elevation = NA,
+                            record_type = NA, bgEnvsVals_Da)
+```
+
+### Save background points 
+
+Save the 10000 generated background points with the extracted environmental information
+
+```{r}
+write.csv(bgEnvsVals_Da,
+          here("background","background_soils",
+               "Damburneya_ambigens_bgPoints_S.csv"))
+```
+
+
+### Partition occurrence data
+
+Partition occurrences and background points for model training and
+validation using “hierarchical checkerboard”, a spatial partition method
+with an aggregation factor of 2.
+
+```{r}
+# R code to get partitioned data
+groups_Da <- part_partitionOccs(
+  occs = occs_Da ,
+  bg =  bgSample_Da, 
+  method = "cb2",
+  bgMask = bgMask_Da,
+  aggFact = 2) 
+```
+
+
+### Build and Evaluate Niche Model
+
+Generating a species distribution model using the maxent.jar algorithm
+as implemented in ENMeval V2.0 (with clamping = FALSE). For tuning using
+L, LQ, P feature classes and regularization multipliers in the 1, 4
+range increasing by 1. Not using any categorical predictor variables.
+
+
+```{r}
+# Run maxent model for the selected species
+model_Da <- model_maxent(
+  occs = occs_Da,
+  bg = bgEnvsVals_Da,
+  user.grp = groups_Da, 
+  bgMsk = bgMask_Da,
+  rms = c(1, 4), 
+  rmsStep =  0.5,
+  fcs = c('L', 'LQ','LQH','LQP','LQHP'),
+  clampSel = FALSE,
+  algMaxent = "maxent.jar",
+  parallel = TRUE,
+  numCores = 3)
+
+#Save models for future work
+saveRDS(model_Da,
+        here("Modelos","soils_modelos","ambigens","model_Da_soils.rds"))
+
+
+#For loading model:
+#model_Da <- readRDS(here("Modelos","soils_modelos","ambigens","model_Da_soils.rds"))
+
+```
+
+#Export model results tables
+
+Export tables with evaluation statistics for model evaluation
+
+```{r}
+write.csv(model_Da@results,
+          here("Modelos","soils_modelos","ambigens",
+               "Damburneya_ambigens_eval_Tbl_S.csv"))
+
+write.csv(model_Da@results.partitions,
+          here("Modelos","soils_modelos","ambigens",
+               "Damburneya_ambigens__evalTblBins_S.csv"))
+
+write.csv(model_Da@variable.importance,
+          here("Modelos","soils_modelos","ambigens",
+               "D_ambigens_var_importance_S.csv"))
+
+```
+
+
+### Visualize
+
+Generate Maxent evaluation plots
+
+```{r}
+# Generate an evaluation plot
+
+# create a colorblind friendly palette for evaluation plots
+
+EVAL_palette <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377', '#BBBBBB')
+
+
+#_____________AUC.val
+maxentEvalPlot_Da_AUCval<- ENMeval::evalplot.stats(
+   model_Da,"auc.val","rm","fc")+
+  ylab("AUC value")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#____________AUC.diff
+maxentEvalPlot_Da_AUCdiff<- ENMeval::evalplot.stats(
+   model_Da,"auc.diff","rm","fc")+
+  ylab("AUC diff.")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#_________OR.mtp
+
+
+maxentEvalPlot_Da_ORmtp<- ENMeval::evalplot.stats(
+   model_Da, "or.mtp", x.var="rm", color="fc")+
+    ylab("OR.mtp")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+#_______OR.10p
+
+maxentEvalPlot_Da_OR10p<- ENMeval::evalplot.stats(
+   model_Da,"or.10p",
+   x.var="rm", color="fc")+
+    ylab("OR.10p")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#______________delta AIC
+
+maxentEvalPlot_Da_AIC<- ENMeval::evalplot.stats(
+   model_Da,"delta.AICc","rm", "fc")+
+  ylab("delta AIC")+
+    theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+
+#Extract legend for multiple plot
+
+get_only_legend <- function(plot) {
+    
+plot_table <- ggplot_gtable(ggplot_build(plot)) # get tabular interpretation of plot
+    
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box")     
+
+#  Mark only legend in plot
+
+legend <- plot_table$grobs[[legend_plot]]   # extract legend
+return(legend) # return legend
+}
+
+
+#Temporary plot to extract legend
+for_legend_EVAL_Da<-maxentEvalPlot_Da_AIC+theme(legend.position = "bottom")
+
+legend_EVAL_Da <- get_only_legend(for_legend_EVAL_Da)  
+
+x_axis_title_EVAL_Da <- grid.text("Regularization multiplier",
+                          just="bottom",
+                          gp=gpar(fontsize=9)
+                          )
+EVAL_Da_title <- text_grob("D. ambigens", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Da<-grid.arrange(maxentEvalPlot_Da_AUCval,
+                                maxentEvalPlot_Da_AUCdiff,
+                                maxentEvalPlot_Da_ORmtp,
+                                maxentEvalPlot_Da_OR10p,
+                                maxentEvalPlot_Da_AIC,
+                                ncol=1, nrow=5,
+                                heights=c(1,1,1,1,1),
+                                widths=1.2)   #temporary combined plot
+
+
+#Save evaluation plots
+
+pdf(here::here("Modelos","soils_modelos","ambigens",
+         "EvalPlots_Da_S.pdf"),width = 2.5)
+
+EVAL_Da<-grid.arrange(tmp_combined_EVAL_Da, 
+             x_axis_title_EVAL_Da,legend_EVAL_Da,
+             top=EVAL_Da_title,
+             nrow = 3, ncol=1,
+             heights=c(5,0.2,0.1),
+             widths=1.2)
+
+dev.off()
+
+```
+
+### Visualize
+First, MaxEnt evaluation plots are analized and the best model is chosen.
+Generate response plots for the selected model: LQHP_rm.2
+
+```{r}
+# Generate response plots
+
+
+pdf(here("Modelos","soils_modelos","ambigens","responsePlots_Da_S.pdf"))
+
+dismo::response(
+   model_Da@models$fc.LQHP_rm.2,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+AWCh_resp_Da <- dismo::response(
+   model_Da@models$fc.LQHP_rm.2,var="AWCh",col="#CC3311",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+CECSOL_resp_Da <- dismo::response(
+   model_Da@models$fc.LQHP_rm.2,var="CECSOL",col="#CC3311", expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+CLYPPT_resp_Da <- dismo::response(
+   model_Da@models$fc.LQHP_rm.2,var="CLYPPT",col="#CC3311",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+ORCDRC_resp_Da <- dismo::response(
+   model_Da@models$fc.LQHP_rm.2,var="ORCDRC",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+PHIHOX_resp_Da <- dismo::response(
+   model_Da@models$fc.LQHP_rm.2,var="PHIHOX",col="#CC3311",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+NITROGEN_resp_Da <- dismo::response(
+   model_Da@models$fc.LQHP_rm.2,var="NITROGEN",col="#CC3311",expand=10,
+    xlim = c(0, 17), fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+dev.off()
+
+```
+
+
+
+### Visualize
+
+Generate a map of the Maxent generated model with a “p10” threshold rule (cloglog transformation)
+
+
+```{r}
+# Select current model and obtain raster prediction
+m_Da <- model_Da@models[["fc.LQHP_rm.2"]]
+predSel_Da <- dismo::predict(
+  m_Da, bgMask_Da,
+  args = c(paste0("outputformat=", "cloglog"), 
+           paste0("doclamp=", tolower(as.character(TRUE)))), 
+  na.rm = TRUE)
+
+#Save the continuous cloglog prediction raster
+writeRaster(predSel_Da,here("Modelos","soils_modelos",
+                            "ambigens", 
+                            "cloglog_Dambigens_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+#Apply the function "sdm_threshold" (by Cecina Babish) to apply 10 percentile threshold to the predicted model raster the function is available at: https://babichmorrowc.github.io/post/2019-04-12-sdm-threshold/
+
+#Call function
+sdm_threshold <- function(sdm, occs, type = "mtp", binary = FALSE){
+  occPredVals <- raster::extract(sdm, occs)
+  if(type == "mtp"){
+    thresh <- min(na.omit(occPredVals))
+  } else if(type == "p10"){
+    if(length(occPredVals) < 10){
+      p10 <- floor(length(occPredVals) * 0.9)
+    } else {
+      p10 <- ceiling(length(occPredVals) * 0.9)
+    }
+    thresh <- rev(sort(occPredVals))[p10]
+  }
+  sdm_thresh <- sdm
+  sdm_thresh[sdm_thresh < thresh] <- NA
+  if(binary){
+    sdm_thresh[sdm_thresh >= thresh] <- 1
+  }
+  return(sdm_thresh)
+}
+
+
+#Calculate 10 percentile training presence threshold
+predSel_Da_trhld<-sdm_threshold(predSel_Da,occs_Da[,3:4],"p10",binary=TRUE)
+
+### Save binary raster prediction based on 10 percentile presence classification
+
+writeRaster(predSel_Da_trhld,here("Modelos","soils_modelos",
+                            "ambigens", 
+                            "binp10_cloglog_Dambigens_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+
+
+```
+
+------------------------------------------------------------------------
+
+## Analysis for *Damburneya colorata* (Dc)
+
+User CSV path with occurrence data. If the CSV file is not in the
+current workspace, change to the correct file path
+(e.g. “/Users/darwin/Documents/occs/”).
+
+```{r}
+# NOTE: provide the folder path of the .csv file
+occs_path <- here("Distr_Nectandras","Ocurrencias_filtradas")
+
+occs_path <- file.path(occs_path,"TODAS_filtradas_feb23.csv")
+
+# get a list of species occurrence data
+userOccs_Dc <- occs_userOccs(
+  txtPath = occs_path, 
+  txtName = "TODAS_filtradas_feb23.csv", 
+  txtSep = ",", 
+  txtDec = ".")
+
+occs_Dc <- userOccs_Dc$Damburneya_colorata$cleaned
+```
+
+
+### Save cleaned occurrences data
+Save cleaned occurrences
+
+```{r}
+write.csv(occs_Dc,
+          here("Distr_Nectandras","Ocurrencias_filtradas",
+               "cleanoccs_Dcolorata_new.csv"))
+```
+
+
+
+
+### Obtain environmental data
+
+Using user-specified variables.
+
+```{r}
+## Specify the directory with the environmental variables
+dir_envs_Dc <- here("Rasters","Seleccionados","cortados_biosoils")
+
+envs_path <- file.path(dir_envs_Dc, c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'))
+
+# Create environmental object 
+envs_Dc <- envs_userEnvs(
+  rasPath = envs_path,
+  rasName = c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'),
+  doBrick = FALSE)
+
+occs_xy_Dc <- occs_Dc[c('longitude', 'latitude')]
+
+occs_vals_Dc <- as.data.frame(raster::extract(envs_Dc, occs_xy_Dc))
+
+# remove occurrence records with NA environmental values
+occs_Dc <- occs_Dc[!(rowSums(is.na(occs_vals_Dc)) > 1), ]
+
+# also remove variable value rows with NA environmental values
+occs_vals_Dc <- na.omit(occs_vals_Dc)
+
+# add columns for env variable values for each occurrence record
+occs_Dc <- cbind(occs_Dc, occs_vals_Dc)
+```
+
+### Process environmental data
+
+Sampling of 10000 background points and corresponding environmental data
+using a user provided background extent with a 0.009 degree buffer.
+
+```{r}
+# Load the user provided shapefile or csv file with the desired extent.
+  ##User must input the path to shapefile or csv file and the file name 
+# Define path
+bgPath_Dc <- list.files(path='C:/Users/Laura G/Documents/SIG_DAMBURNEYA/Poligonos/M_pol/Dcolorata_M',  full.names = TRUE)
+
+bgExt_Dc <- penvs_userBgExtent(
+  bgShp_path = paste0(bgPath_Dc, "M_Dcol_ok", ".shp"),
+  bgShp_name = paste0("M_Dcol_ok", c(".shp", ".shx", ".dbf")),
+  userBgBuf = 0.009,
+  occs = occs_Dc)
+
+# Mask environmental data to provided extent
+bgMask_Dc <- penvs_bgMask(
+  occs = occs_Dc,
+  envs = envs_Dc,
+  bgExt = bgExt_Dc)
+
+# Sample background points from the provided area
+bgSample_Dc <- penvs_bgSample(
+  occs = occs_Dc,
+  bgMask =  bgMask_Dc,
+  bgPtsNum = 10000)
+
+# Extract values of environmental layers for each background point
+bgEnvsVals_Dc <- as.data.frame(raster::extract(bgMask_Dc,  bgSample_Dc))
+
+##Add extracted values to background points table
+bgEnvsVals_Dc <- cbind(scientific_name = paste0("bg_", "Damburneya colorata"), bgSample_Dc,
+                            occID = NA, year = NA, institution_code = NA, country = NA,
+                            state_province = NA, locality = NA, elevation = NA,
+                            record_type = NA, bgEnvsVals_Dc)
+```
+
+### Save background points 
+
+Save the 10000 generated background points with the extracted environmental information
+
+```{r}
+write.csv(bgEnvsVals_Dc,
+          here("background","background_soils",
+               "Damburneya_colorata_new_bgPoints_S.csv"))
+```
+
+
+
+
+### Partition occurrence data
+
+Partition occurrences and background points for model training and
+validation using jackknife, a non-spatial partition method.
+
+```{r}
+# R code to get partitioned data
+groups_Dc <- part_partitionOccs(
+  occs = occs_Dc ,
+  bg =  bgSample_Dc, 
+  method = "jack",
+  kfolds = 10) 
+```
+
+### Build and Evaluate Niche Model
+
+Generating a species distribution model using the maxent.jar algorithm
+as implemented in ENMeval V2.0 (with clamping = FALSE). For tuning using
+L, LQ, P feature classes and regularization multipliers in the 1, 4
+range increasing by 1. Not using any categorical predictor variables.
+
+
+```{r}
+# Run maxent model for the selected species
+model_Dc <- model_maxent(
+  occs = occs_Dc,
+  bg = bgEnvsVals_Dc,
+  user.grp = groups_Dc, 
+  bgMsk = bgMask_Dc,
+  rms = c(1, 4), 
+  rmsStep =  0.5,
+  fcs = c('L', 'LQ','LQH','LQP','LQHP'),
+  clampSel = FALSE,
+  algMaxent = "maxent.jar",
+  parallel = TRUE,
+  numCores = 3)
+
+#Save models for future work
+saveRDS(model_Dc,
+        here("Modelos","soils_modelos","colorata","model_Dc_new_soils.rds"))
+
+#For loading model:
+#model_Dc <- readRDS(here("Modelos","soils_modelos","colorata","model_Dc_new_soils.rds"))
+
+```
+
+
+#Export model results tables
+
+Export tables with evaluation statistics for model evaluation
+
+```{r}
+write.csv(model_Dc@results,
+          here("Modelos","soils_modelos","colorata",
+               "Damburneya_colorata_new_eval_Tbl_S.csv"))
+
+write.csv(model_Dc@results.partitions,
+          here("Modelos","soils_modelos","colorata",
+               "Damburneya_colorata_new_evalTblBins_S.csv"))
+
+write.csv(model_Dc@variable.importance,
+          here("Modelos","soils_modelos","colorata",
+               "D_colorata_new_var_importance_S.csv"))
+
+```
+
+
+### Visualize
+
+Generate a Maxent evaluation plot using “auc.diff” as evaluation
+statistic.
+
+```{r}
+# Generate an evaluation plot
+
+
+# create a colorblind friendly palette for evaluation plots
+
+EVAL_palette <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377', '#BBBBBB')
+
+
+#_____________AUC.val
+maxentEvalPlot_Dc_AUCval<- ENMeval::evalplot.stats(
+   model_Dc,"auc.val","rm","fc")+
+  ylab("AUC value")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#____________AUC.diff
+maxentEvalPlot_Dc_AUCdiff<- ENMeval::evalplot.stats(
+   model_Dc,"auc.diff","rm","fc")+
+  ylab("AUC diff.")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#_________OR.mtp
+
+
+maxentEvalPlot_Dc_ORmtp<- ENMeval::evalplot.stats(
+   model_Dc, "or.mtp", x.var="rm", color="fc")+
+    ylab("OR.mtp")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+#_______OR.10p
+
+maxentEvalPlot_Dc_OR10p<- ENMeval::evalplot.stats(
+   model_Dc,"or.10p",
+   x.var="rm", color="fc")+
+    ylab("OR.10p")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#______________delta AIC
+
+maxentEvalPlot_Dc_AIC<- ENMeval::evalplot.stats(
+   model_Dc,"delta.AICc","rm", "fc")+
+  ylab("delta AIC")+
+    theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+
+#Extract legend for multiple plot
+
+get_only_legend <- function(plot) {
+    
+plot_table <- ggplot_gtable(ggplot_build(plot)) # get tabular interpretation of plot
+    
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box")      #  Mark only legend in plot
+
+legend <- plot_table$grobs[[legend_plot]]   # extract legend
+return(legend) # return legend
+}
+
+
+#Temporary plot to extract legend
+for_legend_EVAL_Dc<-maxentEvalPlot_Dc_AIC+theme(legend.position = "bottom")
+
+legend_EVAL_Dc <- get_only_legend(for_legend_EVAL_Dc)  
+
+x_axis_title_EVAL_Dc <- grid.text("Regularization multiplier",
+                          just="bottom",
+                          gp=gpar(fontsize=9)
+                          )
+EVAL_Dc_title <- text_grob("D. colorata", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Dc<-grid.arrange(maxentEvalPlot_Dc_AUCval,
+                                maxentEvalPlot_Dc_AUCdiff,
+                                maxentEvalPlot_Dc_ORmtp,
+                                maxentEvalPlot_Dc_OR10p,
+                                maxentEvalPlot_Dc_AIC,
+                                ncol=1, nrow=5,
+                                heights=c(1,1,1,1,1),
+                                widths=1.2)   #temporary combined plot
+
+
+#Save evaluation plots
+
+pdf(here::here("Modelos","soils_modelos","colorata",
+         "EvalPlots_Dc_new_S.pdf"),width = 2.5)
+
+EVAL_Dc<-grid.arrange(tmp_combined_EVAL_Dc, 
+             x_axis_title_EVAL_Dc,legend_EVAL_Dc,
+             top=EVAL_Dc_title,
+             nrow = 3, ncol=1,
+             heights=c(5,0.2,0.1),
+             widths=1.2)
+
+dev.off()
+```
+
+### Visualize
+
+Generate response plots for the model LQHP_rm.2
+
+```{r}
+
+pdf(here("Modelos","soils_modelos","colorata","responsePlots_Dc_new_S.pdf"))
+
+dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+AWCh_resp_Dc <- dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,var="AWCh",col="#4477AA",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+CECSOL_resp_Dc <- dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,var="CECSOL",col="#4477AA", expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+CLYPPT_resp_Dc <- dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,var="CLYPPT",col="#4477AA",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+ORCDRC_resp_Dc <- dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,var="ORCDRC",col="#4477AA",expand=150,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+PHIHOX_resp_Dc <- dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,var="PHIHOX",col="#4477AA", expand=15,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+NITROGEN_resp_Dc <- dismo::response(
+   model_Dc@models$fc.LQHP_rm.2,var="NITROGEN",col="#4477AA",expand=10,
+    xlim = c(0, 17), fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+dev.off()
+
+
+
+```
+
+
+
+### Visualize
+
+Generate a map of the Maxent generated model with a “p10” threshold rule (cloglog transformation)
+
+```{r}
+# Select current model and obtain raster prediction
+m_Dc <- model_Dc@models[["fc.LQHP_rm.2"]]
+predSel_Dc <- dismo::predict(
+  m_Dc, bgMask_Dc,
+  args = c(paste0("outputformat=", "cloglog"), 
+           paste0("doclamp=", tolower(as.character(TRUE)))), 
+  na.rm = TRUE)
+
+#Save the continuous cloglog prediction raster
+writeRaster(predSel_Dc,here("Modelos","soils_modelos",
+                            "colorata", 
+                            "cloglog_Dcolorata_new_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+
+
+#Apply the function "sdm_threshold" (by Cecina Babish) to apply 10 percentile threshold to the predicted model raster 
+
+predSel_Dc_trhld<-sdm_threshold(predSel_Dc,occs_Dc[,3:4],"p10",binary=TRUE)
+
+### Save binary raster prediction based on 10 percentile presence classification
+
+writeRaster(predSel_Dc_trhld,here("Modelos","soils_modelos",
+                            "colorata", 
+                            "binp10_cloglog_Dcolorata_new_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+
+```
+
+------------------------------------------------------------------------
+
+## Analysis for *Damburneya gentlei* (Dg)
+
+User CSV path with occurrence data. If the CSV file is not in the
+current workspace, change to the correct file path
+(e.g. “/Users/darwin/Documents/occs/”).
+
+```{r}
+# NOTE: provide the folder path of the .csv file
+occs_path <- here("Distr_Nectandras","Ocurrencias_filtradas")
+
+occs_path <- file.path(occs_path,"TODAS_filtradas_feb23.csv")
+
+# get a list of species occurrence data
+userOccs_Dg <- occs_userOccs(
+  txtPath = occs_path, 
+  txtName = "TODAS_filtradas_feb23.csv", 
+  txtSep = ",", 
+  txtDec = ".")
+
+occs_Dg <- userOccs_Dg$Damburneya_gentlei$cleaned
+```
+
+### Save cleaned occurrences data
+Save cleaned occurrences
+
+```{r}
+write.csv(occs_Dg,
+          here("Distr_Nectandras","Ocurrencias_filtradas",
+               "cleanoccs_Dgentlei.csv"))
+```
+
+
+### Obtain environmental data
+
+Using user-specified variables.
+
+```{r}
+## Specify the directory with the environmental variables
+dir_envs_Dg <- here("Rasters","Seleccionados","cortados_biosoils")
+
+envs_path <- file.path(dir_envs_Dg, c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'))
+
+# Create environmental object 
+envs_Dg <- envs_userEnvs(
+  rasPath = envs_path,
+  rasName = c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'),
+  doBrick = FALSE)
+
+occs_xy_Dg <- occs_Dg[c('longitude', 'latitude')]
+
+occs_vals_Dg <- as.data.frame(raster::extract(envs_Dg, occs_xy_Dg))
+
+# remove occurrence records with NA environmental values
+occs_Dg <- occs_Dg[!(rowSums(is.na(occs_vals_Dg)) > 1), ]
+
+# also remove variable value rows with NA environmental values
+occs_vals_Dg <- na.omit(occs_vals_Dg)
+
+# add columns for env variable values for each occurrence record
+occs_Dg <- cbind(occs_Dg, occs_vals_Dg)
+```
+
+### Process environmental data
+
+Sampling of 10000 background points and corresponding environmental data
+using a user provided background extent with a 0.009 degree buffer.
+
+```{r}
+# Load the user provided shapefile or csv file with the desired extent.
+  ##User must input the path to shapefile or csv file and the file name 
+# Define path
+bgPath_Dg <- list.files(path='C:/Users/Laura G/Documents/SIG_DAMBURNEYA/Poligonos/M_pol/Dgentlei_M',  full.names = TRUE)
+
+bgExt_Dg <- penvs_userBgExtent(
+  bgShp_path = paste0(bgPath_Dg, "M_Dgentlei_ok", ".shp"),
+  bgShp_name = paste0("M_Dgentlei_ok", c(".shp", ".shx", ".dbf")),
+  userBgBuf = 0.009,
+  occs = occs_Dg)
+
+# Mask environmental data to provided extent
+bgMask_Dg <- penvs_bgMask(
+  occs = occs_Dg,
+  envs = envs_Dg,
+  bgExt = bgExt_Dg)
+# Sample background points from the provided area
+bgSample_Dg <- penvs_bgSample(
+  occs = occs_Dg,
+  bgMask =  bgMask_Dg,
+  bgPtsNum = 10000)
+
+# Extract values of environmental layers for each background point
+bgEnvsVals_Dg <- as.data.frame(raster::extract(bgMask_Dg,  bgSample_Dg))
+
+##Add extracted values to background points table
+bgEnvsVals_Dg <- cbind(scientific_name = paste0("bg_", "Damburneya gentlei"), bgSample_Dg,
+                            occID = NA, year = NA, institution_code = NA, country = NA,
+                            state_province = NA, locality = NA, elevation = NA,
+                            record_type = NA, bgEnvsVals_Dg)
+```
+
+### Save background points 
+
+Save the 10000 generated background points with the extracted environmental information
+
+```{r}
+write.csv(bgEnvsVals_Dg,
+          here("background","background_soils",
+               "Damburneya_gentlei_bgPoints_S.csv"))
+```
+
+
+
+### Partition occurrence data
+
+Partition occurrences and background points for model training and
+validation using “hierarchical checkerboard”, a spatial partition method
+with an aggregation factor of 2.
+
+```{r}
+# R code to get partitioned data
+groups_Dg <- part_partitionOccs(
+  occs = occs_Dg ,
+  bg =  bgSample_Dg, 
+  method = "cb2",
+  bgMask = bgMask_Dg,
+  aggFact = 2) 
+```
+
+### Build and Evaluate Niche Model
+
+Generating a species distribution model using the maxent.jar algorithm
+as implemented in ENMeval V2.0 (with clamping = TRUE). For tuning using
+L, LQ, P, feature classes and regularization multipliers in the 1, 4
+range increasing by 1. Not using any categorical predictor variables.
+
+```{r}
+# Run maxent model for the selected species
+model_Dg <- model_maxent(
+  occs = occs_Dg,
+  bg = bgEnvsVals_Dg,
+  user.grp = groups_Dg, 
+  bgMsk = bgMask_Dg,
+  rms = c(1, 4), 
+  rmsStep =  0.5,
+  fcs = c('L', 'LQ','LQH','LQP','LQHP'),
+  clampSel = FALSE,
+  algMaxent = "maxent.jar",
+  parallel = TRUE,
+  numCores = 3)
+
+
+saveRDS(model_Dg,
+        here("Modelos","soils_modelos","gentlei","model_Dg_soils.rds"))
+
+
+#For loading model:
+#model_Dg <- readRDS(here("Modelos","soils_modelos","gentlei","model_Dg_soils.rds"))
+
+```
+
+
+
+#Export model results tables
+
+Export tables with evaluation statistics for model evaluation
+
+```{r}
+write.csv(model_Dg@results,
+          here("Modelos","soils_modelos","gentlei",
+               "Damburneya_gentlei_eval_Tbl_S.csv"))
+
+write.csv(model_Dg@results.partitions,
+          here("Modelos","soils_modelos","gentlei",
+               "Damburneya_gentlei__evalTblBins_S.csv"))
+
+write.csv(model_Dg@variable.importance,
+          here("Modelos","soils_modelos","gentlei",
+               "D_gentlei_var_importance_S.csv"))
+
+```
+
+
+### Visualize
+
+Generate a Maxent evaluation plot using “auc.diff” as evaluation
+statistic.
+
+```{r}
+# Generate an evaluation plot
+
+# create a colorblind friendly palette for evaluation plots
+
+EVAL_palette <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377', '#BBBBBB')
+
+
+#_____________AUC.val
+maxentEvalPlot_Dg_AUCval<- ENMeval::evalplot.stats(
+   model_Dg,"auc.val","rm","fc")+
+  ylab("AUC value")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#____________AUC.diff
+maxentEvalPlot_Dg_AUCdiff<- ENMeval::evalplot.stats(
+   model_Dg,"auc.diff","rm","fc")+
+  ylab("AUC diff.")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#_________OR.mtp
+
+
+maxentEvalPlot_Dg_ORmtp<- ENMeval::evalplot.stats(
+   model_Dg, "or.mtp", x.var="rm", color="fc")+
+    ylab("OR.mtp")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+#_______OR.10p
+
+maxentEvalPlot_Dg_OR10p<- ENMeval::evalplot.stats(
+   model_Dg,"or.10p",
+   x.var="rm", color="fc")+
+    ylab("OR.10p")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#______________delta AIC
+
+maxentEvalPlot_Dg_AIC<- ENMeval::evalplot.stats(
+   model_Dg,"delta.AICc","rm", "fc")+
+  ylab("delta AIC")+
+    theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+
+#Extract legend for multiple plot
+
+get_only_legend <- function(plot) {
+    
+plot_table <- ggplot_gtable(ggplot_build(plot)) # get tabular interpretation of plot
+    
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box")      #  Mark only legend in plot
+
+legend <- plot_table$grobs[[legend_plot]]   # extract legend
+return(legend) # return legend
+}
+
+
+#Temporary plot to extract legend
+for_legend_EVAL_Dg<-maxentEvalPlot_Dg_AIC+theme(legend.position = "bottom")
+
+legend_EVAL_Dg <- get_only_legend(for_legend_EVAL_Dg)  
+
+x_axis_title_EVAL_Dg <- grid.text("Regularization multiplier",
+                          just="bottom",
+                          gp=gpar(fontsize=9)
+                          )
+EVAL_Dg_title <- text_grob("D. gentlei", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Dg<-grid.arrange(maxentEvalPlot_Dg_AUCval,
+                                maxentEvalPlot_Dg_AUCdiff,
+                                maxentEvalPlot_Dg_ORmtp,
+                                maxentEvalPlot_Dg_OR10p,
+                                maxentEvalPlot_Dg_AIC,
+                                ncol=1, nrow=5,
+                                heights=c(1,1,1,1,1),
+                                widths=1.2)   #temporary combined plot
+
+
+#Save evaluation plots
+
+pdf(here::here("Modelos","soils_modelos","gentlei",
+         "EvalPlots_Dg_S.pdf"),width = 2.5)
+
+EVAL_Dg<-grid.arrange(tmp_combined_EVAL_Dg, 
+             x_axis_title_EVAL_Dg,legend_EVAL_Dg,
+             top=EVAL_Dg_title,
+             nrow = 3, ncol=1,
+             heights=c(5,0.2,0.1),
+             widths=1.2)
+
+dev.off()
+
+
+```
+### Visualize
+
+Generate response plots for the model LQHP_rm.3.5
+
+```{r}
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_new_S.pdf"))
+
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+AWCh_resp_Dg <- dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,var="AWCh",col="#DDAA33",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+CECSOL_resp_Dg <- dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,var="CECSOL",col="#DDAA33", expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+CLYPPT_resp_Dg <- dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,var="CLYPPT",col="#DDAA33",expand=30,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+ORCDRC_resp_Dg <- dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,var="ORCDRC",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+PHIHOX_resp_Dg <- dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,var="PHIHOX",col="#DDAA33", expand=10,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+NITROGEN_resp_Dg <- dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,var="NITROGEN",col="#DDAA33",expand=10,
+        xlim = c(0, 17), fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+dev.off()
+
+```
+
+### Revision of response curves to analize model seleection
+Generate response curves for candidate models according to evaluation metrics. These models have delta AICc close to zero and <2
+
+```{r}
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQH_1.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQH_rm.1,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQH_1")
+
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_2.5.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.2.5,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_2.5")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_3.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.3,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_3")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_3.5.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.3.5,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_3.5")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_1.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.1,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_1")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_1.5.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.1.5,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_1.5")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQH_1.5.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQH_rm.1.5,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQH_1.5")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_2.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.2,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_2")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQHP_4.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQHP_rm.4,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQHP_4")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQH_2.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQH_rm.2,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQH_2")
+
+pdf(here("Modelos","soils_modelos","gentlei","responsePlots_Dg_S_LQP_2.pdf"))
+dismo::response(
+   model_Dg@models$fc.LQP_rm.2,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...), col="#DDAA33", main="gent_LQP_2")
+
+dev.off()
+```
+
+
+
+### Visualize
+
+Generate a map of the Maxent generated model with a “p10” threshold rule
+
+
+```{r}
+# Select current model and obtain raster prediction
+m_Dg <- model_Dg@models[["fc.LQHP_rm.3.5"]]
+predSel_Dg <- dismo::predict(
+  m_Dg, bgMask_Dg,
+  args = c(paste0("outputformat=", "cloglog"), 
+           paste0("doclamp=", tolower(as.character(TRUE)))), 
+  na.rm = TRUE)
+
+#Save the continuous cloglog prediction raster
+writeRaster(predSel_Dg,here("Modelos","soils_modelos",
+                            "gentlei", 
+                            "cloglog_Dgentlei_new_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+#Apply the function "sdm_threshold" (by Cecina Babish) to apply 10 percentile threshold to the predicted model raster 
+
+predSel_Dg_trhld<-sdm_threshold(predSel_Dg,occs_Dg[,3:4],"p10",binary=TRUE)
+
+### Save binary raster prediction based on 10 percentile presence classification
+
+writeRaster(predSel_Dg_trhld,here("Modelos","soils_modelos",
+                            "gentlei", 
+                            "binp10_cloglog_Dgentlei_new_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+
+
+```
+
+
+
+
+------------------------------------------------------------------------
+
+## Analysis for *Damburneya salicifolia* (Ds)
+
+User CSV path with occurrence data. If the CSV file is not in the
+current workspace, change to the correct file path
+(e.g. “/Users/darwin/Documents/occs/”).
+
+```{r}
+# NOTE: provide the folder path of the .csv file
+occs_path <- here("Distr_Nectandras","Ocurrencias_filtradas")
+
+occs_path <- file.path(occs_path,"TODAS_filtradas_feb23.csv")
+
+# get a list of species occurrence data
+userOccs_Ds <- occs_userOccs(
+  txtPath = occs_path, 
+  txtName = "TODAS_filtradas_feb23.csv", 
+  txtSep = ",", 
+  txtDec = ".")
+
+occs_Ds <- userOccs_Ds$Damburneya_salicifolia$cleaned
+```
+
+### Obtain environmental data
+
+Using user-specified variables.
+
+```{r}
+## Specify the directory with the environmental variables
+dir_envs_Ds <- here("Rasters","Seleccionados","cortados_biosoils")
+
+envs_path <- file.path(dir_envs_Ds, c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'))
+
+# Create environmental object 
+envs_Ds <- envs_userEnvs(
+  rasPath = envs_path,
+  rasName = c('AWCh.tif', 'CECSOL.tif', 'CLYPPT.tif', 'ORCDRC.tif', 'PHIHOX.tif', 'NITROGEN.tif'),
+  doBrick = FALSE)
+
+occs_xy_Ds <- occs_Ds[c('longitude', 'latitude')]
+
+occs_vals_Ds <- as.data.frame(raster::extract(envs_Ds, occs_xy_Ds))
+
+# remove occurrence records with NA environmental values
+occs_Ds <- occs_Ds[!(rowSums(is.na(occs_vals_Ds)) > 1), ]
+
+# also remove variable value rows with NA environmental values
+occs_vals_Ds <- na.omit(occs_vals_Ds)
+
+# add columns for env variable values for each occurrence record
+occs_Ds <- cbind(occs_Ds, occs_vals_Ds)
+```
+
+### Save cleaned occurrences data
+Save cleaned occurrences
+
+```{r}
+write.csv(occs_Ds,
+          here("Distr_Nectandras","Ocurrencias_filtradas",
+               "cleanoccs_Dsalicifolia.csv"))
+```
+
+### Process environmental data
+
+Sampling of 10000 background points and corresponding environmental data
+using a user provided background extent with a 0.009 degree buffer.
+
+```{r}
+# Load the user provided shapefile or csv file with the desired extent.
+  ##User must input the path to shapefile or csv file and the file name 
+# Define path
+bgPath_Ds <- list.files(path='C:/Users/Laura G/Documents/SIG_DAMBURNEYA/Poligonos/M_pol/Dsalicifolia_M',  full.names = TRUE)
+
+bgExt_Ds <- penvs_userBgExtent(
+  bgShp_path = paste0(bgPath_Ds, "M_Dsalicifolia_ok", ".shp"),
+  bgShp_name = paste0("M_Dsalicifolia_ok", c(".shp", ".shx", ".dbf")),
+  userBgBuf = 0.009,
+  occs = occs_Ds)
+
+# Mask environmental data to provided extent
+bgMask_Ds <- penvs_bgMask(
+  occs = occs_Ds,
+  envs = envs_Ds,
+  bgExt = bgExt_Ds)
+
+# Sample background points from the provided area
+bgSample_Ds <- penvs_bgSample(
+  occs = occs_Ds,
+  bgMask =  bgMask_Ds,
+  bgPtsNum = 10000)
+
+# Extract values of environmental layers for each background point
+bgEnvsVals_Ds <- as.data.frame(raster::extract(bgMask_Ds,  bgSample_Ds))
+
+##Add extracted values to background points table
+bgEnvsVals_Ds <- cbind(scientific_name = paste0("bg_", "Damburneya salicifolia"), bgSample_Ds,
+                            occID = NA, year = NA, institution_code = NA, country = NA,
+                            state_province = NA, locality = NA, elevation = NA,
+                            record_type = NA, bgEnvsVals_Ds)
+```
+
+### Save background points 
+
+Save the 10000 generated background points with the extracted environmental information
+
+```{r}
+write.csv(bgEnvsVals_Ds,
+          here("background","background_soils",
+               "Damburneya_salicifolias_bgPoints_S.csv"))
+```
+
+### Partition occurrence data
+
+Partition occurrences and background points for model training and
+validation using “hierarchical checkerboard”, a spatial partition method
+with an aggregation factor of 2.
+
+```{r}
+# R code to get partitioned data
+groups_Ds <- part_partitionOccs(
+  occs = occs_Ds ,
+  bg =  bgSample_Ds, 
+  method = "cb2",
+  bgMask = bgMask_Ds,
+  aggFact = 2) 
+```
+
+### Build and Evaluate Niche Model
+
+Generating a species distribution model using the maxent.jar algorithm
+as implemented in ENMeval V2.0 (with clamping = TRUE). For tuning using
+L, LQ, H, feature classes and regularization multipliers in the 1, 4
+range increasing by 1. Not using any categorical predictor variables.
+
+```{r}
+#First, increase memory limits.
+memory.limit(24382)
+
+
+# Run maxent model for the selected species
+
+model_Ds <- model_maxent(
+  occs = occs_Ds,
+  bg = bgEnvsVals_Ds,
+  user.grp = groups_Ds, 
+  bgMsk = bgMask_Ds,
+  rms = c(1, 4), 
+  rmsStep =  0.5,
+  fcs = c('L', 'LQ','LQH','LQP','LQHP'),
+  clampSel = FALSE,
+  algMaxent = "maxent.jar",
+  parallel = FALSE)
+
+#Save models for future work
+saveRDS(model_Ds,
+        here("Modelos","soils_modelos","salicifolia","model_Ds_soils.rds"))
+
+
+#For loading model:
+#model_Ds <- readRDS(here("Modelos","soils_modelos","salicifolia","model_Ds_soils.rds"))
+
+
+```
+
+------------------------------------------------------------------------
+#Export model results tables
+
+Export tables with evaluation statistics for model evaluation
+
+```{r}
+write.csv(model_Ds@results,
+          here("Modelos","soils_modelos","salicifolia",
+               "Damburneya_salicifolia_eval_Tbl_S.csv"))
+
+write.csv(model_Ds@results.partitions,
+          here("Modelos","soils_modelos","salicifolia",
+               "Damburneya_salicifolia__evalTblBins_S.csv"))
+
+write.csv(model_Ds@variable.importance,
+          here("Modelos","soils_modelos","salicifolia",
+               "D_salicifolia_var_importance_S.csv"))
+
+```
+------------------------------------------------------------------------
+
+
+### Visualize
+
+Generate a Maxent evaluation plots
+
+```{r}
+# Generate an evaluation plot
+# Generate an evaluation plot
+
+# create a colorblind friendly palette for evaluation plots
+
+EVAL_palette <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377', '#BBBBBB')
+
+
+#_____________AUC.val
+maxentEvalPlot_Ds_AUCval<- ENMeval::evalplot.stats(
+   model_Ds,"auc.val","rm","fc")+
+  ylab("AUC value")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#____________AUC.diff
+maxentEvalPlot_Ds_AUCdiff<- ENMeval::evalplot.stats(
+   model_Ds,"auc.diff","rm","fc")+
+  ylab("AUC diff.")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#_________OR.mtp
+
+
+maxentEvalPlot_Ds_ORmtp<- ENMeval::evalplot.stats(
+   model_Ds, "or.mtp", x.var="rm", color="fc")+
+    ylab("OR.mtp")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+#_______OR.10p
+
+maxentEvalPlot_Ds_OR10p<- ENMeval::evalplot.stats(
+   model_Ds,"or.10p",
+   x.var="rm", color="fc")+
+    ylab("OR.10p")+
+  xlab("Regularization multiplier")+
+  theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text.x = element_blank(),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+#______________delta AIC
+
+maxentEvalPlot_Ds_AIC<- ENMeval::evalplot.stats(
+   model_Ds,"delta.AICc","rm", "fc")+
+  ylab("delta AIC")+
+    theme_classic()+
+  theme(legend.position="none",
+          legend.title=element_blank(),
+          legend.key.size = unit(0.8,"line"),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.x = element_blank(),
+          legend.text= element_text (size=8),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA),
+          strip.text.x = element_blank(),
+          strip.background = element_rect(colour=NA),
+          strip.placement = "outside")+
+  scale_color_manual(values=EVAL_palette)
+
+
+
+#Extract legend for multiple plot
+
+get_only_legend <- function(plot) {
+    
+plot_table <- ggplot_gtable(ggplot_build(plot)) # get tabular interpretation of plot
+    
+legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box")      #  Mark only legend in plot
+
+legend <- plot_table$grobs[[legend_plot]]   # extract legend
+return(legend) # return legend
+}
+
+
+#Temporary plot to extract legend
+for_legend_EVAL_Ds<-maxentEvalPlot_Ds_AIC+theme(legend.position = "bottom")
+
+legend_EVAL_Ds <- get_only_legend(for_legend_EVAL_Ds)  
+
+x_axis_title_EVAL_Ds <- grid.text("Regularization multiplier",
+                          just="bottom",
+                          gp=gpar(fontsize=9)
+                          )
+EVAL_Ds_title <- text_grob("D. salicifolia", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Ds<-grid.arrange(maxentEvalPlot_Ds_AUCval,
+                                maxentEvalPlot_Ds_AUCdiff,
+                                maxentEvalPlot_Ds_ORmtp,
+                                maxentEvalPlot_Ds_OR10p,
+                                maxentEvalPlot_Ds_AIC,
+                                ncol=1, nrow=5,
+                                heights=c(1,1,1,1,1),
+                                widths=1.2)   #temporary combined plot
+
+
+#Save evaluation plots
+
+pdf(here::here("Modelos","soils_modelos","salicifolia",
+         "EvalPlots_Ds_S.pdf"),width = 2.5)
+
+EVAL_Ds<-grid.arrange(tmp_combined_EVAL_Ds, 
+             x_axis_title_EVAL_Ds,legend_EVAL_Ds,
+             top=EVAL_Ds_title,
+             nrow = 3, ncol=1,
+             heights=c(5,0.2,0.1),
+             widths=1.2)
+
+dev.off()
+
+
+```
+
+### Visualize
+
+Generate response plots for the model LQHP_rm.1.5
+
+```{r}
+pdf(here("Modelos","soils_modelos","salicifolia","responsePlots_Ds_S.pdf"))
+
+dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+AWCh_resp_Ds <- dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,var="AWCh",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+CECSOL_resp_Ds <- dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,var="CECSOL",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+CLYPPT_resp_Ds <- dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,var="CLYPPT",col="#44AA99",expand=25,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+ORCDRC_resp_Ds <- dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,var="ORCDRC",col="#44AA99",expand=60,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+PHIHOX_resp_Ds <- dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,var="PHIHOX",col="#44AA99", fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+
+NITROGEN_resp_Ds <- dismo::response(
+   model_Ds@models$fc.LQHP_rm.1.5,var="NITROGEN",col="#44AA99",
+   xlim = c(0, 17), fun=function(x, y, ...) predict(x, y,     args="doclamp=FALSE", ...))
+
+dev.off()
+
+
+```
+
+
+
+### Visualize
+
+Generate a map of the Maxent generated model with a “p10” threshold rule
+
+```{r}
+# Select current model and obtain raster prediction
+m_Ds <- model_Ds@models[["fc.LQHP_rm.1.5"]]
+predSel_Ds <- dismo::predict(
+  m_Ds, bgMask_Ds,
+  args = c(paste0("outputformat=", "cloglog"), 
+           paste0("doclamp=", tolower(as.character(TRUE)))), 
+  na.rm = TRUE)
+
+#Save the continuous cloglog prediction raster
+writeRaster(predSel_Ds,here("Modelos","soils_modelos",
+                            "salicifolia", 
+                            "cloglog_Dsalicifolia_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+
+
+#Apply the function "sdm_threshold" (by Cecina Babish) to apply 10 percentile threshold to the predicted model raster
+
+predSel_Ds_trhld<-sdm_threshold(predSel_Ds,occs_Ds[,3:4],"p10",binary=TRUE)
+
+### Save binary raster prediction based on 10 percentile presence classification
+
+writeRaster(predSel_Ds_trhld,here("Modelos","soils_modelos",
+                            "salicifolia", 
+                            "binp10_cloglog_Dsalicifolia_S.tif"), 
+            format="GTiff",
+            overwritte=TRUE)
+
+
+```
+
+
+
+## Response plots edition
+In ggplot and mixing all the species response curves in a single plot per variable
+```{r}
+#______________________________________________________
+# SOIL VARIABLES
+library(scales)
+
+#AWCh
+
+#Create dataframe from results
+
+AWCh_da<-as.data.frame(AWCh_resp_Da)
+AWCh_da$sp<-"D. ambigens"
+AWCh_dc<-as.data.frame(AWCh_resp_Dc)
+AWCh_dc$sp<-"D. colorata"
+AWCh_dg<-as.data.frame(AWCh_resp_Dg)
+AWCh_dg$sp<-"D. gentlei"
+AWCh_ds<-as.data.frame(AWCh_resp_Ds)
+AWCh_ds$sp<-"D. salicifolia"
+
+r_AWCh<-rbind(AWCh_da,AWCh_dc,AWCh_dg,AWCh_ds)
+names(r_AWCh)[1]<-"AWCh"
+
+
+#Plot AWch
+my_palette<-c('#CC3311', '#4477AA','#DDAA33','#44AA99')
+
+plot_AWCh<- ggplot(r_AWCh, aes(x=AWCh, y=p, color=sp)) +
+    geom_line(size=1)+
+    labs(colour = "Species", x="AWCh")+
+    theme_classic()+   
+    coord_cartesian(ylim=c(0,1))+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1),)+
+    scale_colour_manual(values=my_palette)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA))
+
+
+# CECSOL
+CECSOL_da<-as.data.frame(CECSOL_resp_Da)
+CECSOL_da$sp<-"D. ambigens"
+CECSOL_dc<-as.data.frame(CECSOL_resp_Dc)
+CECSOL_dc$sp<-"D. colorata"
+CECSOL_dg<-as.data.frame(CECSOL_resp_Dg)
+CECSOL_dg$sp<-"D. gentlei"
+CECSOL_ds<-as.data.frame(CECSOL_resp_Ds)
+CECSOL_ds$sp<-"D. salicifolia"
+
+r_CECSOL<-rbind(CECSOL_da,CECSOL_dc,CECSOL_dg,CECSOL_ds)
+names(r_CECSOL)[1]<-"CECSOL"
+
+plot_CECSOL<- ggplot(r_CECSOL, aes(x=CECSOL, y=p, color=sp)) +
+    geom_line(size=1)+
+    labs(colour = "Species", x="CECSOL")+
+    theme_classic()+  
+    coord_cartesian(ylim=c(0,1))+
+    xlim(0,80)+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1),)+
+    scale_colour_manual(values=my_palette)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),      
+          axis.title.y = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA))
+
+#CLYPPT
+CLYPPT_da<-as.data.frame(CLYPPT_resp_Da)
+CLYPPT_da$sp<-"D. ambigens"
+CLYPPT_dc<-as.data.frame(CLYPPT_resp_Dc)
+CLYPPT_dc$sp<-"D. colorata"
+CLYPPT_dg<-as.data.frame(CLYPPT_resp_Dg)
+CLYPPT_dg$sp<-"D. gentlei"
+CLYPPT_ds<-as.data.frame(CLYPPT_resp_Ds)
+CLYPPT_ds$sp<-"D. salicifolia"
+
+r_CLYPPT<-rbind(CLYPPT_da,CLYPPT_dc,CLYPPT_dg,CLYPPT_ds)
+names(r_CLYPPT)[1]<-"CLYPPT"
+
+plot_CLYPPT<- ggplot(r_CLYPPT, aes(x=CLYPPT, y=p, color=sp)) +
+    geom_line(size=1)+
+    labs(colour = "Species", x="CLYPPT")+
+    theme_classic()+   
+    coord_cartesian(ylim=c(0,1))+
+    xlim(0,75)+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1),)+
+    scale_colour_manual(values=my_palette)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9), 
+          axis.title.y = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA))
+
+
+#ORCDRC
+ORCDRC_da<-as.data.frame(ORCDRC_resp_Da)
+ORCDRC_da$sp<-"D. ambigens"
+ORCDRC_dc<-as.data.frame(ORCDRC_resp_Dc)
+ORCDRC_dc$sp<-"D. colorata"
+ORCDRC_dg<-as.data.frame(ORCDRC_resp_Dg)
+ORCDRC_dg$sp<-"D. gentlei"
+ORCDRC_ds<-as.data.frame(ORCDRC_resp_Ds)
+ORCDRC_ds$sp<-"D. salicifolia"
+
+r_ORCDRC<-rbind(ORCDRC_da,ORCDRC_dc,ORCDRC_dg,ORCDRC_ds)
+names(r_ORCDRC)[1]<-"ORCDRC"
+
+plot_ORCDRC<- ggplot(r_ORCDRC, aes(x=ORCDRC, y=p, color=sp)) +
+    geom_line(size=1)+
+    labs(colour = "Species", x="ORCDRC")+
+    theme_classic()+   
+    coord_cartesian(ylim=c(0,1))+
+  xlim(0,300)+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1),)+
+    scale_colour_manual(values=my_palette)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),  
+          axis.title.y = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA))
+
+
+#PHIOX
+PHIHOX_da<-as.data.frame(PHIHOX_resp_Da)
+PHIHOX_da$sp<-"D. ambigens"
+PHIHOX_dc<-as.data.frame(PHIHOX_resp_Dc)
+PHIHOX_dc$sp<-"D. colorata"
+PHIHOX_dg<-as.data.frame(PHIHOX_resp_Dg)
+PHIHOX_dg$sp<-"D. gentlei"
+PHIHOX_ds<-as.data.frame(PHIHOX_resp_Ds)
+PHIHOX_ds$sp<-"D. salicifolia"
+
+r_PHIHOX<-rbind(PHIHOX_da,PHIHOX_dc,PHIHOX_dg,PHIHOX_ds)
+names(r_PHIHOX)[1]<-"PHIHOX"
+
+plot_PHIHOX<- ggplot(r_PHIHOX, aes(x=PHIHOX, y=p, color=sp)) +
+    geom_line(size=1)+
+    labs(colour = "Species", x="PHIHOX")+
+    theme_classic()+   
+    coord_cartesian(ylim=c(0,1))+
+    xlim(40,90)+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1),)+
+    scale_colour_manual(values=my_palette)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9), 
+          axis.title.y = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA))
+
+#NITROGEN
+NITROGEN_da<-as.data.frame(NITROGEN_resp_Da)
+NITROGEN_da$sp<-"D. ambigens"
+NITROGEN_dc<-as.data.frame(NITROGEN_resp_Dc)
+NITROGEN_dc$sp<-"D. colorata"
+NITROGEN_dg<-as.data.frame(NITROGEN_resp_Dg)
+NITROGEN_dg$sp<-"D. gentlei"
+NITROGEN_ds<-as.data.frame(NITROGEN_resp_Ds)
+NITROGEN_ds$sp<-"D. salicifolia"
+
+r_NITROGEN<-rbind(NITROGEN_da,NITROGEN_dc,NITROGEN_dg,NITROGEN_ds)
+names(r_NITROGEN)[1]<-"NITROGEN"
+
+plot_NITROGEN<- ggplot(r_NITROGEN, aes(x=NITROGEN, y=p, color=sp)) +
+    geom_line(size=1)+
+    labs(colour = "Species", x="NITROGEN")+
+    theme_classic()+   
+    coord_cartesian(ylim=c(0,1))+
+    xlim(0,17)+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1),)+
+    scale_colour_manual(values=my_palette)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal",
+          panel.border = element_rect(colour = "black", fill=NA))
+
+
+#===================== FIGURE LAYOUT =================================
+white_palette<-c("white","white","white","white","white")
+
+empty_plot <- plot_NITROGEN + 
+  theme_void()+
+  geom_blank()+
+  theme(legend.position="left",
+        legend.text = element_text(face="italic", size=8))+
+  scale_colour_manual(values=white_palette)+
+  scale_fill_manual(values=white_palette)
+
+
+library(cowplot)
+
+legend_summ <- get_legend(
+  plot_AWCh + 
+    guides(color = guide_legend(nrow = 4)) +
+    theme(legend.position = "bottom")
+)
+
+pdf(here("Modelos","RESP_EVAL_figures","soil_resp_new_fig.pdf"),width = 3,height=9)
+
+summary_fig <-plot_grid(plot_AWCh,
+                   plot_CECSOL,
+                   plot_CLYPPT,plot_NITROGEN,
+                   plot_ORCDRC,plot_PHIHOX,
+                   legend_summ,
+                   ncol = 1,
+                   nrow=6,
+                   axis="l",
+                   rel_widths=1,
+                   rel_heights=1,
+                   align="hv",
+                   
+                   labels=c("a","b","c","d","e","f"),
+                   label_size=8, 
+                   label_fontface="plain",
+                   hjust=3,
+                   vjus=0.2)
+
+annotate_figure(summary_fig,
+                left = text_grob("Predicted value", 
+                                 rot = 90))
+dev.off()
+
+```
+
+
+# Evaluation plots layout
+
+```{r}
+
+# create a colorblind friendly palette for evaluation plots
+
+EVAL_palette <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377', '#BBBBBB')
+
+
+# for D. ambigens
+
+
+#_____________AUC.val
+maxentEvalPlot_Da_AUCval_lyt<- maxentEvalPlot_Da_AUCval+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#____________AUC.diff
+maxentEvalPlot_Da_AUCdiff_lyt<- maxentEvalPlot_Da_AUCdiff+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+#_________OR.mtp
+maxentEvalPlot_Da_ORmtp_lyt<- maxentEvalPlot_Da_ORmtp+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#_______OR.10p
+
+maxentEvalPlot_Da_OR10p_lyt<- maxentEvalPlot_Da_OR10p+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#______________delta AIC
+
+maxentEvalPlot_Da_AIC_lyt<- maxentEvalPlot_Da_AIC+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+EVAL_Da_title <- text_grob("D. ambigens", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Da_lyt<-grid.arrange(EVAL_Da_title,
+                                       maxentEvalPlot_Da_AUCval_lyt,
+                                       maxentEvalPlot_Da_AUCdiff_lyt,
+                                       maxentEvalPlot_Da_ORmtp_lyt,
+                                       maxentEvalPlot_Da_OR10p_lyt,
+                                       maxentEvalPlot_Da_AIC_lyt,
+                                       ncol=1, nrow=6,
+                                       heights=c(0.1,1,1,1,1,1),
+                                       widths=1.2)
+
+# for D. colorata
+
+
+
+#_____________AUC.val
+maxentEvalPlot_Dc_AUCval_lyt<- maxentEvalPlot_Dc_AUCval+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#____________AUC.diff
+maxentEvalPlot_Dc_AUCdiff_lyt<- maxentEvalPlot_Dc_AUCdiff+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+#_________OR.mtp
+maxentEvalPlot_Dc_ORmtp_lyt<- maxentEvalPlot_Dc_ORmtp+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#_______OR.10p
+
+maxentEvalPlot_Dc_OR10p_lyt<- maxentEvalPlot_Dc_OR10p+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#______________delta AIC
+
+maxentEvalPlot_Dc_AIC_lyt<- maxentEvalPlot_Dc_AIC+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+EVAL_Dc_title <- text_grob("D. colorata", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Dc_lyt<-grid.arrange(EVAL_Dc_title,
+                                       maxentEvalPlot_Dc_AUCval_lyt,
+                                       maxentEvalPlot_Dc_AUCdiff_lyt,
+                                       maxentEvalPlot_Dc_ORmtp_lyt,
+                                       maxentEvalPlot_Dc_OR10p_lyt,
+                                       maxentEvalPlot_Dc_AIC_lyt,
+                                       ncol=1, nrow=6,
+                                       heights=c(0.1,1,1,1,1,1),
+                                       widths=1.2)
+
+# for D. gentlei
+
+
+
+#_____________AUC.val
+maxentEvalPlot_Dg_AUCval_lyt<- maxentEvalPlot_Dg_AUCval+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#____________AUC.diff
+maxentEvalPlot_Dg_AUCdiff_lyt<- maxentEvalPlot_Dg_AUCdiff+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+#_________OR.mtp
+maxentEvalPlot_Dg_ORmtp_lyt<- maxentEvalPlot_Dg_ORmtp+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#_______OR.10p
+
+maxentEvalPlot_Dg_OR10p_lyt<- maxentEvalPlot_Dg_OR10p+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#______________delta AIC
+
+maxentEvalPlot_Dg_AIC_lyt<- maxentEvalPlot_Dg_AIC+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+EVAL_Dg_title <- text_grob("D. gentlei", size = 9, face = "italic") 
+
+
+tmp_combined_EVAL_Dg_lyt<-grid.arrange(EVAL_Dg_title,
+                                       maxentEvalPlot_Dg_AUCval_lyt,
+                                       maxentEvalPlot_Dg_AUCdiff_lyt,
+                                       maxentEvalPlot_Dg_ORmtp_lyt,
+                                       maxentEvalPlot_Dg_OR10p_lyt,
+                                       maxentEvalPlot_Dg_AIC_lyt,
+                                       ncol=1, nrow=6,
+                                       heights=c(0.1,1,1,1,1,1),
+                                       widths=1.2)
+
+
+
+
+# for D. salicifolia:
+
+#_____________AUC.val
+maxentEvalPlot_Ds_AUCval_lyt<- maxentEvalPlot_Ds_AUCval+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#____________AUC.diff
+maxentEvalPlot_Ds_AUCdiff_lyt<- maxentEvalPlot_Ds_AUCdiff+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+#_________OR.mtp
+maxentEvalPlot_Ds_ORmtp_lyt<- maxentEvalPlot_Ds_ORmtp+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#_______OR.10p
+
+maxentEvalPlot_Ds_OR10p_lyt<- maxentEvalPlot_Ds_OR10p+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#______________delta AIC
+
+maxentEvalPlot_Ds_AIC_lyt<- maxentEvalPlot_Ds_AIC+
+  theme(axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#_____combine plots per species
+
+
+#Extract legend for multiple plot
+
+get_only_legend <- function(plot) {
+  
+  plot_table <- ggplot_gtable(ggplot_build(plot)) # get tabular interpretation of plot
+  
+  legend_plot <- which(sapply(plot_table$grobs, function(x) x$name) == "guide-box")      #  Mark only legend in plot
+  
+  legend <- plot_table$grobs[[legend_plot]]   # extract legend
+  return(legend) # return legend
+}
+
+
+#ADD to multiple plot
+
+
+#Temporary plot to extract legend
+for_legend_EVAL_Ds<-maxentEvalPlot_Ds_AIC+theme(legend.position = "bottom")
+
+legend_EVAL_Ds <- get_only_legend(for_legend_EVAL_Ds)  
+
+x_axis_title_EVAL_Ds <- grid.text("Regularization multiplier",
+                                  just="bottom",
+                                  gp=gpar(fontsize=9)
+)
+
+EVAL_Ds_title <- text_grob("D. salicifolia", size = 9, face = "italic") 
+
+tmp_combined_EVAL_Ds_lyt<-grid.arrange(EVAL_Ds_title,
+                                   maxentEvalPlot_Ds_AUCval_lyt,
+                                   maxentEvalPlot_Ds_AUCdiff_lyt,
+                                   maxentEvalPlot_Ds_ORmtp_lyt,
+                                   maxentEvalPlot_Ds_OR10p_lyt,
+                                   maxentEvalPlot_Ds_AIC_lyt,
+                                   ncol=1, nrow=6,
+                                   heights=c(0.1,1,1,1,1,1),
+                                   widths=1.2)   #temporary combined plot
+
+# Join the summary of allplots
+EVAL_summ_lyt<-grid.arrange(tmp_combined_EVAL_Da_lyt,
+                        tmp_combined_EVAL_Dc_lyt,
+                        tmp_combined_EVAL_Dg_lyt,
+                        tmp_combined_EVAL_Ds_lyt, 
+                        nrow = 1, ncol=4,
+                        heights=1,
+                        widths=c(1,1,1,1))
+
+
+#Save evaluation plots
+
+pdf(here::here("Modelos","RESP_EVAL_figures",
+               "EvalPlots_S_new_fig.pdf"))
+
+
+
+EVAL_summ_lyt_edited <- grid.arrange(EVAL_summ_lyt,
+                                 x_axis_title_EVAL_Ds,
+                                 legend_EVAL_Ds,
+                                 nrow=3, ncol=1,
+                                 heights=c(1.8,0.07,0.05),
+                                 widths=0.7)
+dev.off()
+```
+
+
+
+------------------------------------------------------------------------
+
+##### Niche overlap calculated for background points with ecospat
+
+
+## ESPACE analysis for *Damburneya ambigens* and *Damburneya colorata* (Da\_Dc)
+
+### Environmental space for background data
+
+Performing and plotting principal component analysis to reduce
+dimensionality of environmental space for *Damburneya ambigens* &
+  *Damburneya colorata*. PCA done for background environmental conditions.
+
+
+
+```{r}
+####Extract environmental information
+
+#Determine the variables to use
+pcaSel_bg_Da_Dc <- c('AWCh', 'CECSOL', 'CLYPPT', 'ORCDRC', 'PHIHOX', 'NITROGEN')
+
+
+
+#Run the pca
+espace_pca_bg_Da_Dc <- espace_pca(
+  sp.name1 = "Damburneya ambigens",
+  sp.name2 = "Damburneya colorata", 
+  occs.z1 = occs_Da[,pcaSel_bg_Da_Dc],
+  occs.z2 = occs_Dc[,pcaSel_bg_Da_Dc],
+  bgPts.z1 = bgEnvsVals_Da[,pcaSel_bg_Da_Dc],
+  bgPts.z2 = bgEnvsVals_Dc[,pcaSel_bg_Da_Dc])
+
+
+inertia_pca_bg_Da_Dc<-inertia.dudi(espace_pca_bg_Da_Dc,col.inertia=TRUE)
+
+#Print PCA summary of results
+sink(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+          "pcasumm_bg_Da_Dc_bg_new_S.txt"))
+
+"summary"
+summary(espace_pca_bg_Da_Dc)
+
+"eigenvalues"
+espace_pca_bg_Da_Dc$eig
+
+"the column normed scores i.e. the principal axes"
+espace_pca_bg_Da_Dc$c1
+
+"variable coordinates"
+espace_pca_bg_Da_Dc$co
+
+"inertia"
+sink()
+
+##generate plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+         "scatter_bg_Da_Dc_bg_new_S.pdf"))
+
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_bg_Da_Dc$scores[espace_pca_bg_Da_Dc$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_bg_Da_Dc$scores[espace_pca_bg_Da_Dc$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c('#CC3311', '#4477AA'), cstar = 0, cpoint = 0.1)
+
+dev.off()
+
+
+# PCA Correlation circle
+
+#axis explained variance (inertia)
+pca1cont_bg_Da_Dc<-paste("PC1= ",round(inertia_pca_bg_Da_Dc$tot.inertia[1,3],2),"%")
+
+pca2cont_bg_Da_Dc<-paste("PC2= ", round(inertia_pca_bg_Da_Dc$tot.inertia[2,3]-inertia_pca_bg_Da_Dc$tot.inertia[1,3],2),
+                      "%")
+
+axis_cont_bg_Da_Dc<-paste(pca1cont_bg_Da_Dc,", ",pca2cont_bg_Da_Dc)
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+         "corcircle_Da_Dc_new_S.pdf"),width=14.5, height=10)   
+
+ade4::s.corcircle(espace_pca_bg_Da_Dc$co, xax = 1, yax = 2,grid=TRUE,
+                  lab = pcaSel_bg_Da_Dc, full = TRUE, box = TRUE,
+                  clabel=1.5)
+mtext(axis_cont_bg_Da_Dc, side=3, cex=1.5, adj=0.9)
+dev.off()
+
+# PCA screeplot
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+         "screeplot_Da_Dc_bg_new_S.pdf"))
+
+screeplot(espace_pca_bg_Da_Dc, main = NULL,col="gray")
+
+dev.off()
+
+```
+
+### Environmental space
+
+Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya ambigens* & *Damburneya colorata*
+```{r}
+# Create density grid
+espace_occDens_bg_Da_Dc <- espace_occDens(
+  sp.name1 = "Damburneya ambigens",
+  sp.name2 = "Damburneya colorata", 
+  pca = espace_pca_bg_Da_Dc) 
+
+#plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dc","dens_grid_Da_Dc_bg_new_S.pdf"), height=4, width =7.25)
+
+par(mfrow = c(1,2))
+ecospat::ecospat.plot.niche(espace_occDens_bg_Da_Dc[["Damburneya ambigens"]], title = "Damburneya ambigens")
+ecospat::ecospat.plot.niche(espace_occDens_bg_Da_Dc[["Damburneya colorata"]], title = "Damburneya colorata")
+
+dev.off()
+```
+
+
+
+### Environmental space
+
+Evaluating niche overlap between *Damburneya ambigens* & *Damburneya
+colorata* for which the occurrence density grid was computed based on background environmental conditions. Running
+equivalence test (FALSE) and similarity test TRUE
+
+```{r}
+##Run tests 
+espace_nicheOv_bg_Da_Dc <- espace_nicheOv(
+  z1 = espace_occDens_bg_Da_Dc[["Damburneya ambigens"]],
+  z2 = espace_occDens_bg_Da_Dc[["Damburneya colorata"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+espace_nicheOv_bg_Dc_Da <- espace_nicheOv(
+  z1 = espace_occDens_bg_Da_Dc[["Damburneya colorata"]],
+  z2 = espace_occDens_bg_Da_Dc[["Damburneya ambigens"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+
+
+# plots
+layout(matrix(c(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3), 4, 3, byrow = F))
+
+# layout.show(3)
+#Plot niche overlap
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+         "overlap_Da_Dc_bg_new_S.pdf"))   
+
+ecospat::ecospat.plot.niche.dyn(
+  espace_occDens_bg_Da_Dc[["Damburneya ambigens"]],
+  espace_occDens_bg_Da_Dc[["Damburneya colorata"]],
+  0.5,
+  name.axis1="PC1", name.axis2="PC2",
+  title = "Damburneya ambigens vs Damburneya colorata",
+  colz1 = '#CC3311', #red
+  colz2 = '#4477AA', #blue
+  colinter = 'grey18', #grey
+  colZ1 = '#CC3311', #red
+  colZ2 = '#4477AA' #blue
+)
+dev.off()
+
+#plot niche similarity
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+         "similarity_Da_Dc_bg_new_S.pdf"))   
+if (FALSE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Da_Dc $equiv,
+                                     "D", "Equivalency test")
+if (TRUE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Da_Dc$simil,
+                                     "D", "Similarity test")
+dev.off()
+
+#### write results
+
+sink(here("Modelos","soils_modelos","comparados_bg","Da_Dc",
+          "Noverlap_Da_Dc_bg_new_S.txt"))
+"Niche overlap, equivalency and similarity for D. ambigens and D. colorata"
+
+espace_nicheOv_bg_Da_Dc
+
+"/n Niche overlap, equivalency and similarity for D. colorata and D. ambigens"    
+espace_nicheOv_bg_Dc_Da
+
+sink()
+
+
+```
+
+------------------------------------------------------------------------
+  
+  ## ESPACE analysis for *Damburneya ambigens* and *Damburneya gentlei* (Da\_Dg)
+  
+  ### Environmental space
+  
+  Performing and plotting principal component analysis to reduce
+dimensionality of environmental space for *Damburneya ambigens* &
+  *Damburneya gentlei*. PCA done for background environmental conditions.
+
+
+```{r}
+####Extract environmental information
+
+#Determine the variables to use
+pcaSel_bg_Da_Dg <- c('AWCh', 'CECSOL', 'CLYPPT', 'ORCDRC', 'PHIHOX', 'NITROGEN')
+
+
+
+#Run the pca
+espace_pca_bg_Da_Dg <- espace_pca(
+  sp.name1 = "Damburneya ambigens",
+  sp.name2 = "Damburneya gentlei", 
+  occs.z1 = occs_Da[,pcaSel_bg_Da_Dg],
+  occs.z2 = occs_Dg[,pcaSel_bg_Da_Dg],
+  bgPts.z1 = bgEnvsVals_Da[,pcaSel_bg_Da_Dg],
+  bgPts.z2 = bgEnvsVals_Dg[,pcaSel_bg_Da_Dg])
+
+
+inertia_pca_bg_Da_Dg<-inertia.dudi(espace_pca_bg_Da_Dg,col.inertia=TRUE)
+
+#Print PCA summary of results
+sink(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+          "pcasumm_bg_Da_Dg_bg_S.txt"))
+
+"summary"
+summary(espace_pca_bg_Da_Dg)
+
+"eigenvalues"
+espace_pca_bg_Da_Dg$eig
+
+"the column normed scores i.e. the principal axes"
+espace_pca_bg_Da_Dg$c1
+
+"variable coordinates"
+espace_pca_bg_Da_Dg$co
+
+"inertia"
+inertia_pca_bg_Da_Dg
+
+sink()
+
+
+
+##generate plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+         "scatter_bg_Da_Dg_bg_S.pdf"))
+
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_bg_Da_Dg$scores[espace_pca_bg_Da_Dg$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_bg_Da_Dg$scores[espace_pca_bg_Da_Dg$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c('#CC3311', '#DDAA33'), cstar = 0, cpoint = 0.1)
+
+dev.off()
+
+
+# PCA Correlation circle
+
+#axis explained variance (inertia)
+pca1cont_bg_Da_Dg<-paste("PC1= ",round(inertia_pca_bg_Da_Dg$tot.inertia[1,3],2),"%")
+pca2cont_bg_Da_Dg<-paste("PC2= ", round(inertia_pca_bg_Da_Dg$tot.inertia[2,3]-inertia_pca_bg_Da_Dg$tot.inertia[1,3],2),
+                      "%")
+
+axis_cont_bg_Da_Dg<-paste(pca1cont_bg_Da_Dg,", ",pca2cont_bg_Da_Dg)
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+         "corcircle_Da_Dg_bg_S.pdf"),width=14.5, height=10)   
+
+ade4::s.corcircle(espace_pca_bg_Da_Dg$co, xax = 1, yax = 2,grid=TRUE,
+                  lab = pcaSel_bg_Da_Dg, full = TRUE, box = TRUE,
+                  clabel=1.5)
+mtext(axis_cont_bg_Da_Dg, side=3, cex=1.5, adj=0.9)
+dev.off()
+
+# PCA screeplot
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+         "screeplot_Da_Dg_bg_S.pdf"))
+
+screeplot(espace_pca_bg_Da_Dg, main = NULL,col="gray")
+
+dev.off()
+
+```
+
+
+### Environmental space
+
+Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya ambigens* & *Damburneya gentlei*
+  
+```{r}
+# Create density grid
+espace_occDens_bg_Da_Dg <- espace_occDens(
+  sp.name1 = "Damburneya ambigens",
+  sp.name2 = "Damburneya gentlei", 
+  pca = espace_pca_bg_Da_Dg) 
+
+#plots
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dg","dens_grid_Da_Dg_bg_S.pdf"), height=4, width =7.25)
+
+par(mfrow = c(1,2))
+ecospat::ecospat.plot.niche(espace_occDens_bg_Da_Dg[["Damburneya ambigens"]], title = "Damburneya ambigens")
+ecospat::ecospat.plot.niche(espace_occDens_bg_Da_Dg[["Damburneya gentlei"]], title = "Damburneya gentlei")
+
+dev.off()
+```
+
+### Environmental space
+
+Evaluating niche overlap between *Damburneya ambigens* & *Damburneya
+gentlei* for which the occurrence density grid was computed based on background environmental conditions. Running
+equivalence test (FALSE) and similarity test TRUE
+
+```{r}
+##Run tests 
+espace_nicheOv_bg_Da_Dg <- espace_nicheOv(
+  z1 = espace_occDens_bg_Da_Dg[["Damburneya ambigens"]],
+  z2 = espace_occDens_bg_Da_Dg[["Damburneya gentlei"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+espace_nicheOv_bg_Dg_Da <- espace_nicheOv(
+  z1 = espace_occDens_bg_Da_Dg[["Damburneya gentlei"]],
+  z2 = espace_occDens_bg_Da_Dg[["Damburneya ambigens"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+
+# plots
+layout(matrix(c(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3), 4, 3, byrow = F))
+
+# layout.show(3)
+#Plot niche overlap
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+         "overlap_Da_Dg_bg_S.pdf"))   
+
+ecospat::ecospat.plot.niche.dyn(
+  espace_occDens_bg_Da_Dg[["Damburneya ambigens"]],
+  espace_occDens_bg_Da_Dg[["Damburneya gentlei"]],
+  0.5,
+  name.axis1="PC1", name.axis2="PC2",
+  title = "Damburneya ambigens vs Damburneya gentlei",
+  colz1 = '#CC3311', #red
+  colz2 = '#DDAA33', #yellow
+  colinter = 'grey18', #grey
+  colZ1 = '#CC3311', #red
+  colZ2 = '#DDAA33' #yellow
+)
+dev.off()
+
+#plot niche similarity
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+         "similarity_Da_Dg_bg_S.pdf"))   
+if (FALSE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Da_Dg $equiv,
+                                     "D", "Equivalency test")
+if (TRUE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Da_Dg$simil,
+                                     "D", "Similarity test")
+dev.off()
+
+#### write results
+
+sink(here("Modelos","soils_modelos","comparados_bg","Da_Dg",
+          "Noverlap_Da_Dg_bg_S.txt"))
+"Niche overlap, equivalency and similarity for D. ambigens and D. gentlei"
+
+espace_nicheOv_bg_Da_Dg
+
+"/n Niche overlap, equivalency and similarity for D. gentlei and D. ambigens"    
+espace_nicheOv_bg_Dg_Da
+
+sink()
+
+
+```
+
+------------------------------------------------------------------------
+  
+  ## ESPACE analysis for *Damburneya ambigens* and *Damburneya salicifolia* (Da\_Ds)
+  
+  
+  ### Environmental space
+  
+  Performing and plotting principal component analysis to reduce
+dimensionality of environmental space for *Damburneya ambigens* &
+  *Damburneya salicifolia*. PCA done for background environmental conditions.
+
+```{r}
+####Extract environmental information
+
+#Determine the variables to use
+pcaSel_bg_Da_Ds <- c('AWCh', 'CECSOL', 'CLYPPT', 'ORCDRC', 'PHIHOX', 'NITROGEN')
+
+
+
+#Run the pca
+espace_pca_bg_Da_Ds <- espace_pca(
+  sp.name1 = "Damburneya ambigens",
+  sp.name2 = "Damburneya salicifolia", 
+  occs.z1 = occs_Da[,pcaSel_bg_Da_Ds],
+  occs.z2 = occs_Ds[,pcaSel_bg_Da_Ds],
+  bgPts.z1 = bgEnvsVals_Da[,pcaSel_bg_Da_Ds],
+  bgPts.z2 = bgEnvsVals_Ds[,pcaSel_bg_Da_Ds])
+
+
+inertia_pca_bg_Da_Ds<-inertia.dudi(espace_pca_bg_Da_Ds,col.inertia=TRUE)
+
+#Print PCA summary of results
+sink(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+          "pcasumm_bg_Da_Ds_bg_S.txt"))
+
+"summary"
+summary(espace_pca_bg_Da_Ds)
+
+"eigenvalues"
+espace_pca_bg_Da_Ds$eig
+
+"the column normed scores i.e. the principal axes"
+espace_pca_bg_Da_Ds$c1
+
+"variable coordinates"
+espace_pca_bg_Da_Ds$co
+
+"inertia"
+
+
+sink()
+
+
+
+##generate plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+         "scatter_bg_Da_Ds_bg_S.pdf"))
+
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_bg_Da_Ds$scores[espace_pca_bg_Da_Ds$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_bg_Da_Ds$scores[espace_pca_bg_Da_Ds$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c('#CC3311', '#44AA99'), cstar = 0, cpoint = 0.1)
+
+dev.off()
+
+
+# PCA Correlation circle
+
+#axis explained variance (inertia)
+pca1cont_bg_Da_Ds<-paste("PC1= ",round(inertia_pca_bg_Da_Ds$tot.inertia[1,3],2),"%")
+pca2cont_bg_Da_Ds<-paste("PC2= ", round(inertia_pca_bg_Da_Ds$tot.inertia[2,3]-inertia_pca_bg_Da_Ds$tot.inertia[1,3],2),
+                      "%")
+
+axis_cont_bg_Da_Ds<-paste(pca1cont_bg_Da_Ds,", ",pca2cont_bg_Da_Ds)
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+         "corcircle_Da_Ds_bg_S.pdf"),width=14.5, height=10)   
+
+ade4::s.corcircle(espace_pca_bg_Da_Ds$co, xax = 1, yax = 2,grid=TRUE,
+                  lab = pcaSel_bg_Da_Ds, full = TRUE, box = TRUE,
+                  clabel=1.5)
+mtext(axis_cont_bg_Da_Ds, side=3, cex=1.5, adj=0.9)
+dev.off()
+
+# PCA screeplot
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+         "screeplot_Da_Ds_bg_S.pdf"))
+
+screeplot(espace_pca_bg_Da_Ds, main = NULL,col="gray")
+
+dev.off()
+
+```
+
+
+
+
+### Environmental space
+
+Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya ambigens* & *Damburneya salicifolia*
+  
+```{r}
+# Create density grid
+espace_occDens_bg_Da_Ds <- espace_occDens(
+  sp.name1 = "Damburneya ambigens",
+  sp.name2 = "Damburneya salicifolia", 
+  pca = espace_pca_bg_Da_Ds) 
+
+#plots
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Ds","dens_grid_Da_Ds_bg_S.pdf"), height=4, width =7.25)
+
+par(mfrow = c(1,2))
+ecospat::ecospat.plot.niche(espace_occDens_bg_Da_Ds[["Damburneya ambigens"]], title = "Damburneya ambigens")
+ecospat::ecospat.plot.niche(espace_occDens_bg_Da_Ds[["Damburneya salicifolia"]], title = "Damburneya salicifolia")
+dev.off()
+```
+
+### Environmental space
+
+Evaluating niche overlap between *Damburneya ambigens* & *Damburneya
+salicifolia* for which the occurrence density grid was computed based on background environmental conditions. Running
+equivalence test (FALSE) and similarity test TRUE
+
+```{r}
+##Run tests 
+espace_nicheOv_bg_Da_Ds <- espace_nicheOv(
+  z1 = espace_occDens_bg_Da_Ds[["Damburneya ambigens"]],
+  z2 = espace_occDens_bg_Da_Ds[["Damburneya salicifolia"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+espace_nicheOv_bg_Ds_Da <- espace_nicheOv(
+  z1 = espace_occDens_bg_Da_Ds[["Damburneya salicifolia"]],
+  z2 = espace_occDens_bg_Da_Ds[["Damburneya ambigens"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+
+
+# plots
+layout(matrix(c(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3), 4, 3, byrow = F))
+
+# layout.show(3)
+#Plot niche overlap
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+         "overlap_Da_Ds_bg_S.pdf"))   
+
+ecospat::ecospat.plot.niche.dyn(
+  espace_occDens_bg_Da_Ds[["Damburneya ambigens"]],
+  espace_occDens_bg_Da_Ds[["Damburneya salicifolia"]],
+  0.5,
+  name.axis1="PC1", name.axis2="PC2",
+  title = "Damburneya ambigens vs Damburneya salicifolia",
+  colz1 = '#CC3311', #red
+  colz2 = '#44AA99', #green
+  colinter = 'grey18', #grey
+  colZ1 = '#CC3311', #red
+  colZ2 = '#44AA99' #green
+)
+dev.off()
+
+#plot niche similarity
+pdf(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+         "similarity_Da_Ds_bg_S.pdf"))   
+if (FALSE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Da_Ds $equiv,
+                                     "D", "Equivalency test")
+if (TRUE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Da_Ds$simil,
+                                     "D", "Similarity test")
+dev.off()
+
+#### write results
+
+sink(here("Modelos","soils_modelos","comparados_bg","Da_Ds",
+          "Noverlap_Da_Ds_bg_S.txt"))
+"Niche overlap, equivalency and similarity for D. ambigens and D. salicifolia"
+
+espace_nicheOv_bg_Da_Ds
+
+"/n Niche overlap, equivalency and similarity for D. salicifolia and D. ambigens"    
+espace_nicheOv_bg_Ds_Da
+
+sink()
+
+
+```
+------------------------------------------------------------------------
+  
+  ## ESPACE analysis for *Damburneya colorata* and *Damburneya gentlei* (Dc\_Dg)
+  
+  ### Environmental space
+  
+  Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya colorata* & *Damburneya gentlei*
+  
+```{r}
+####Extract environmental information
+
+#Determine the variables to use
+pcaSel_bg_Dc_Dg <- c('AWCh', 'CECSOL', 'CLYPPT', 'ORCDRC', 'PHIHOX', 'NITROGEN')
+
+
+#Run the pca
+espace_pca_bg_Dc_Dg <- espace_pca(
+  sp.name1 = "Damburneya colorata",
+  sp.name2 = "Damburneya gentlei", 
+  occs.z1 = occs_Dc[,pcaSel_bg_Dc_Dg],
+  occs.z2 = occs_Dg[,pcaSel_bg_Dc_Dg],
+  bgPts.z1 = bgEnvsVals_Dc[,pcaSel_bg_Dc_Dg],
+  bgPts.z2 = bgEnvsVals_Dg[,pcaSel_bg_Dc_Dg])
+
+
+inertia_pca_bg_Dc_Dg<-inertia.dudi(espace_pca_bg_Dc_Dg,col.inertia=TRUE)
+
+#Print PCA summary of results
+sink(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+          "pcasumm_bg_Dc_Dg_new_bg_S.txt"))
+
+"summary"
+summary(espace_pca_bg_Dc_Dg)
+
+"eigenvalues"
+espace_pca_bg_Dc_Dg$eig
+
+"the column normed scores i.e. the principal axes"
+espace_pca_bg_Dc_Dg$c1
+
+"variable coordinates"
+espace_pca_bg_Dc_Dg$co
+
+"inertia"
+inertia_pca_bg_Dc_Dg
+
+sink()
+
+
+
+##generate plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+         "scatter_bg_Dc_Dg_new_bg_S.pdf"))
+
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_bg_Dc_Dg$scores[espace_pca_bg_Dc_Dg$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_bg_Dc_Dg$scores[espace_pca_bg_Dc_Dg$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c('#4477AA', '#DDAA33'), cstar = 0, cpoint = 0.1)
+
+dev.off()
+
+
+# PCA Correlation circle
+
+#axis explained variance (inertia)
+pca1cont_bg_Dc_Dg<-paste("PC1= ",round(inertia_pca_bg_Dc_Dg$tot.inertia[1,3],2),"%")
+pca2cont_bg_Dc_Dg<-paste("PC2= ", round(inertia_pca_bg_Dc_Dg$tot.inertia[2,3]-inertia_pca_bg_Dc_Dg$tot.inertia[1,3],2),
+                      "%")
+
+axis_cont_bg_Dc_Dg<-paste(pca1cont_bg_Dc_Dg,", ",pca2cont_bg_Dc_Dg)
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+         "corcircle_Dc_Dg_new_S.pdf"),width=14.5, height=10)   
+
+ade4::s.corcircle(espace_pca_bg_Dc_Dg$co, xax = 1, yax = 2,grid=TRUE,
+                  lab = pcaSel_bg_Dc_Dg, full = TRUE, box = TRUE,
+                  clabel=1.5)
+mtext(axis_cont_bg_Dc_Dg, side=3, cex=1.5, adj=0.9)
+dev.off()
+
+# PCA screeplot
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+         "screeplot_Dc_Dg_new_bg_S.pdf"))
+
+screeplot(espace_pca_bg_Dc_Dg, main = NULL,col="gray")
+
+dev.off()
+
+```
+
+### Environmental space
+
+Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya colorata* & *Damburneya gentlei*
+  
+```{r}
+# Create density grid
+espace_occDens_bg_Dc_Dg <- espace_occDens(
+  sp.name1 = "Damburneya colorata",
+  sp.name2 = "Damburneya gentlei", 
+  pca = espace_pca_bg_Dc_Dg) 
+
+#plots
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Dg","dens_grid_Dc_Dg_new_bg_S.pdf"), height=4, width =7.25)
+
+par(mfrow = c(1,2))
+ecospat::ecospat.plot.niche(espace_occDens_bg_Dc_Dg[["Damburneya colorata"]], title = "Damburneya colorata")
+ecospat::ecospat.plot.niche(espace_occDens_bg_Dc_Dg[["Damburneya gentlei"]], title = "Damburneya gentlei")
+dev.off()
+```
+
+### Environmental space
+
+Evaluating niche overlap between *Damburneya colorata* & *Damburneya
+gentlei* for which the occurrence density grid was computed based on background environmental conditions. Running
+equivalence test (FALSE) and similarity test TRUE
+```{r}
+##Run tests 
+espace_nicheOv_bg_Dc_Dg <- espace_nicheOv(
+  z1 = espace_occDens_bg_Dc_Dg[["Damburneya colorata"]],
+  z2 = espace_occDens_bg_Dc_Dg[["Damburneya gentlei"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+espace_nicheOv_bg_Dg_Dc <- espace_nicheOv(
+  z1 = espace_occDens_bg_Dc_Dg[["Damburneya gentlei"]],
+  z2 = espace_occDens_bg_Dc_Dg[["Damburneya colorata"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+
+
+# plots
+layout(matrix(c(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3), 4, 3, byrow = F))
+
+# layout.show(3)
+#Plot niche overlap
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+         "overlap_Dc_Dg_new_bg_S.pdf"))   
+
+ecospat::ecospat.plot.niche.dyn(
+  espace_occDens_bg_Dc_Dg[["Damburneya colorata"]],
+  espace_occDens_bg_Dc_Dg[["Damburneya gentlei"]],
+  0.5,
+  name.axis1="PC1", name.axis2="PC2",
+  title = "Damburneya colorata vs Damburneya gentlei",
+  colz1 = '#4477AA', #blue
+  colz2 = '#DDAA33', #yellow
+  colinter = 'grey18', #grey
+  colZ1 = '#4477AA', #blue
+  colZ2 = '#DDAA33' #yellow
+)
+dev.off()
+
+#plot niche similarity
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+         "similarity_Dc_Dg_new_bg_S.pdf"))   
+if (FALSE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Dc_Dg $equiv,
+                                     "D", "Equivalency test")
+if (TRUE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Dc_Dg$simil,
+                                     "D", "Similarity test")
+dev.off()
+
+#### write results
+
+sink(here("Modelos","soils_modelos","comparados_bg","Dc_Dg",
+          "Noverlap_Dc_Dg_bg_S.txt"))
+"Niche overlap, equivalency and similarity for D. colorata and D. gentlei"
+
+espace_nicheOv_bg_Dc_Dg
+
+"/n Niche overlap, equivalency and similarity for D. gentlei and D. colorata"    
+espace_nicheOv_bg_Dg_Dc
+
+sink()
+
+
+```
+------------------------------------------------------------------------
+  
+  ## ESPACE analysis for *Damburneya colorata* and *Damburneya salicifolia* (Dc\_Ds)
+  
+  ### Environmental space
+  
+  Performing and plotting principal component analysis to reduce
+dimensionality of environmental space for *Damburneya colorata* &
+  *Damburneya salicifolia*. PCA done for background environmental conditions.
+
+```{r}
+####Extract environmental information
+
+#Determine the variables to use
+pcaSel_bg_Dc_Ds <- c('AWCh', 'CECSOL', 'CLYPPT', 'ORCDRC', 'PHIHOX', 'NITROGEN')
+
+
+
+#Run the pca
+espace_pca_bg_Dc_Ds <- espace_pca(
+  sp.name1 = "Damburneya colorata",
+  sp.name2 = "Damburneya salicifolia", 
+  occs.z1 = occs_Dc[,pcaSel_bg_Dc_Ds],
+  occs.z2 = occs_Ds[,pcaSel_bg_Dc_Ds],
+  bgPts.z1 = bgEnvsVals_Dc[,pcaSel_bg_Dc_Ds],
+  bgPts.z2 = bgEnvsVals_Ds[,pcaSel_bg_Dc_Ds])
+
+
+inertia_pca_bg_Dc_Ds<-inertia.dudi(espace_pca_bg_Dc_Ds,col.inertia=TRUE)
+
+#Print PCA summary of results
+sink(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+          "pcasumm_bg_Dc_Ds_new_bg_S.txt"))
+
+"summary"
+summary(espace_pca_bg_Dc_Ds)
+
+"eigenvalues"
+espace_pca_bg_Dc_Ds$eig
+
+"the column normed scores i.e. the principal axes"
+espace_pca_bg_Dc_Ds$c1
+
+"variable coordinates"
+espace_pca_bg_Dc_Ds$co
+
+"inertia"
+inertia_pca_bg_Dc_Ds
+
+sink()
+
+
+
+##generate plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+         "scatter_bg_Dc_Ds_new_bg_S.pdf"))
+
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_bg_Dc_Ds$scores[espace_pca_bg_Dc_Ds$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_bg_Dc_Ds$scores[espace_pca_bg_Dc_Ds$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c('#4477AA', '#44AA99'), cstar = 0, cpoint = 0.1)
+
+dev.off()
+
+
+# PCA Correlation circle
+
+#axis explained variance (inertia)
+pca1cont_bg_Dc_Ds<-paste("PC1= ",round(inertia_pca_bg_Dc_Ds$tot.inertia[1,3],2),"%")
+pca2cont_bg_Dc_Ds<-paste("PC2= ", round(inertia_pca_bg_Dc_Ds$tot.inertia[2,3]-inertia_pca_bg_Dc_Ds$tot.inertia[1,3],2),
+                      "%")
+
+axis_cont_bg_Dc_Ds<-paste(pca1cont_bg_Dc_Ds,", ",pca2cont_bg_Dc_Ds)
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+         "corcircle_Dc_Ds_new_bg_S.pdf"),width=14, height=10)   
+
+ade4::s.corcircle(espace_pca_bg_Dc_Ds$co, xax = 1, yax = 2,grid=TRUE,
+                  lab = pcaSel_bg_Dc_Ds, full = TRUE, box = TRUE,
+                  clabel=1.5)
+mtext(axis_cont_bg_Dc_Ds, side=3, cex=1.5, adj=0.9)
+dev.off()
+
+# PCA screeplot
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+         "screeplot_Dc_Ds_new_bg_S.pdf"))
+
+screeplot(espace_pca_bg_Dc_Ds, main = NULL,col="gray")
+
+dev.off()
+
+```
+
+
+
+### Environmental space
+
+Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya colorata* & *Damburneya salicifolia*
+  
+```{r}
+# Create density grid
+espace_occDens_bg_Dc_Ds <- espace_occDens(
+  sp.name1 = "Damburneya colorata",
+  sp.name2 = "Damburneya salicifolia", 
+  pca = espace_pca_bg_Dc_Ds) 
+#plots
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Ds","dens_grid_Dc_Ds_new_bg_S.pdf"), height=4, width =7.25)
+par(mfrow = c(1,2))
+ecospat::ecospat.plot.niche(espace_occDens_bg_Dc_Ds[["Damburneya colorata"]], title = "Damburneya colorata")
+ecospat::ecospat.plot.niche(espace_occDens_bg_Dc_Ds[["Damburneya salicifolia"]], title = "Damburneya salicifolia")
+
+dev.off()
+```
+
+### Environmental space
+
+Evaluating niche overlap between *Damburneya colorata* & *Damburneya
+salicifolia* for which the occurrence density grid was computed based on background environmental conditions. Running
+equivalence test (FALSE) and similarity test TRUE
+
+```{r}
+##Run tests 
+espace_nicheOv_bg_Dc_Ds <- espace_nicheOv(
+  z1 = espace_occDens_bg_Dc_Ds[["Damburneya colorata"]],
+  z2 = espace_occDens_bg_Dc_Ds[["Damburneya salicifolia"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+espace_nicheOv_bg_Ds_Dc <- espace_nicheOv(
+  z1 = espace_occDens_bg_Dc_Ds[["Damburneya salicifolia"]],
+  z2 = espace_occDens_bg_Dc_Ds[["Damburneya colorata"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+
+
+# plots
+layout(matrix(c(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3), 4, 3, byrow = F))
+
+# layout.show(3)
+#Plot niche overlap
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+         "overlap_Dc_Ds_new_bg_S.pdf"))   
+
+ecospat::ecospat.plot.niche.dyn(
+  espace_occDens_bg_Dc_Ds[["Damburneya colorata"]],
+  espace_occDens_bg_Dc_Ds[["Damburneya salicifolia"]],
+  0.5,
+  name.axis1="PC1", name.axis2="PC2",
+  title = "Damburneya colorata vs Damburneya salicifolia",
+  colz1 = '#4477AA', #blue
+  colz2 = '#44AA99', #green
+  colinter = 'grey18', #grey
+  colZ1 = '#4477AA', #blue
+  colZ2 = '#44AA99' #green
+)
+dev.off()
+
+#plot niche similarity
+pdf(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+         "similarity_Dc_Ds_new_bg_S.pdf"))   
+if (FALSE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Dc_Ds $equiv,
+                                     "D", "Equivalency test")
+if (TRUE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Dc_Ds$simil,
+                                     "D", "Similarity test")
+dev.off()
+
+#### write results
+
+sink(here("Modelos","soils_modelos","comparados_bg","Dc_Ds",
+          "Noverlap_Dc_Ds_new_bg_S.txt"))
+"Niche overlap, equivalency and similarity for D. colorata and D. salicifolia"
+
+espace_nicheOv_bg_Dc_Ds
+
+"/n Niche overlap, equivalency and similarity for D. salicifolia and D. colorata"    
+espace_nicheOv_bg_Ds_Dc
+
+sink()
+
+
+```
+
+
+
+------------------------------------------------------------------------
+  
+  ## ESPACE analysis for *Damburneya gentlei* and *Damburneya salicifolia* (Dg\_Ds)
+  
+  ### Environmental space
+  
+  Performing and plotting principal component analysis to reduce
+dimensionality of environmental space for *Damburneya gentlei* &
+  *Damburneya salicifolia*. PCA done for background environmental conditions.
+
+```{r}
+####Extract environmental information
+
+#Determine the variables to use
+pcaSel_bg_Dg_Ds <- c('AWCh', 'CECSOL', 'CLYPPT', 'ORCDRC', 'PHIHOX', 'NITROGEN')
+
+
+#Run the pca
+espace_pca_bg_Dg_Ds <- espace_pca(
+  sp.name1 = "Damburneya gentlei",
+  sp.name2 = "Damburneya salicifolia", 
+  occs.z1 = occs_Dg[,pcaSel_bg_Dg_Ds],
+  occs.z2 = occs_Ds[,pcaSel_bg_Dg_Ds],
+  bgPts.z1 = bgEnvsVals_Dg[,pcaSel_bg_Dg_Ds],
+  bgPts.z2 = bgEnvsVals_Ds[,pcaSel_bg_Dg_Ds])
+
+
+inertia_pca_bg_Dg_Ds<-inertia.dudi(espace_pca_bg_Dg_Ds,col.inertia=TRUE)
+
+#Print PCA summary of results
+sink(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+          "pcasumm_bg_Dg_Ds_bg_S.txt"))
+
+"summary"
+summary(espace_pca_bg_Dg_Ds)
+
+"eigenvalues"
+espace_pca_bg_Dg_Ds$eig
+
+"the column normed scores i.e. the principal axes"
+espace_pca_bg_Dg_Ds$c1
+
+"variable coordinates"
+espace_pca_bg_Dg_Ds$co
+
+"inertia"
+
+
+sink()
+
+
+
+##generate plots
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+         "scatter_bg_Dg_Ds_bg_S.pdf"))
+
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_bg_Dg_Ds$scores[espace_pca_bg_Dg_Ds$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_bg_Dg_Ds$scores[espace_pca_bg_Dg_Ds$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c('#DDAA33', '#44AA99'), cstar = 0, cpoint = 0.1)
+
+dev.off()
+
+
+# PCA Correlation circle
+
+#axis explained variance (inertia)
+pca1cont_bg_Dg_Ds<-paste("PC1= ",round(inertia_pca_bg_Dg_Ds$tot.inertia[1,3],2),"%")
+pca2cont_bg_Dg_Ds<-paste("PC2= ", round(inertia_pca_bg_Dg_Ds$tot.inertia[2,3]-inertia_pca_bg_Dg_Ds$tot.inertia[1,3],2),
+                      "%")
+
+axis_cont_bg_Dg_Ds<-paste(pca1cont_bg_Dg_Ds,", ",pca2cont_bg_Dg_Ds)
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+         "corcircle_Dg_Ds_bg_S.pdf"),width=14.5, height=10)   
+
+ade4::s.corcircle(espace_pca_bg_Dg_Ds$co, xax = 1, yax = 2,grid=TRUE,
+                  lab = pcaSel_bg_Dg_Ds, full = TRUE, box = TRUE,
+                  clabel=1.5)
+mtext(axis_cont_bg_Dg_Ds, side=3, cex=1.5, adj=0.9)
+dev.off()
+
+# PCA screeplot
+pdf(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+         "screeplot_Dg_Ds_bg_S.pdf"))
+
+screeplot(espace_pca_bg_Dg_Ds, main = NULL,col="gray")
+
+dev.off()
+
+```
+
+### Environmental space
+
+Calculating the part of environmental space more densly populated by
+species & the availability of environmental conditions in the background
+for *Damburneya gentlei* & *Damburneya salicifolia*
+  
+```{r}
+# Create density grid
+espace_occDens_bg_Dg_Ds <- espace_occDens(
+  sp.name1 = "Damburneya gentlei",
+  sp.name2 = "Damburneya salicifolia", 
+  pca = espace_pca_bg_Dg_Ds) 
+
+#plots
+pdf(here("Modelos","soils_modelos","comparados_bg","Dg_Ds","dens_grid_Dg_Ds_bg_S.pdf"), height=4, width =7.25)
+par(mfrow = c(1,2))
+ecospat::ecospat.plot.niche(espace_occDens_bg_Dg_Ds[["Damburneya gentlei"]], title = "Damburneya gentlei")
+ecospat::ecospat.plot.niche(espace_occDens_bg_Dg_Ds[["Damburneya salicifolia"]], title = "Damburneya salicifolia")
+dev.off()
+```
+
+### Environmental space
+
+Evaluating niche overlap between *Damburneya gentlei* & *Damburneya
+salicifolia* for which the occurrence density grid was computed based on background environmental conditions. Running
+equivalence test (FALSE) and similarity test TRUE
+
+
+```{r}
+##Run tests 
+espace_nicheOv_bg_Dg_Ds <- espace_nicheOv(
+  z1 = espace_occDens_bg_Dg_Ds[["Damburneya gentlei"]],
+  z2 = espace_occDens_bg_Dg_Ds[["Damburneya salicifolia"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+espace_nicheOv_bg_Ds_Dg <- espace_nicheOv(
+  z1 = espace_occDens_bg_Dg_Ds[["Damburneya salicifolia"]],
+  z2 = espace_occDens_bg_Dg_Ds[["Damburneya gentlei"]],
+  iter = 1000,
+  equivalency = FALSE,
+  similarity = TRUE) 
+
+
+
+# plots
+layout(matrix(c(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3), 4, 3, byrow = F))
+
+# layout.show(3)
+#Plot niche overlap
+
+pdf(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+         "overlap_Dg_Ds_bg_S.pdf"))   
+
+ecospat::ecospat.plot.niche.dyn(
+  espace_occDens_bg_Dg_Ds[["Damburneya gentlei"]],
+  espace_occDens_bg_Dg_Ds[["Damburneya salicifolia"]],
+  0.5,
+  name.axis1="PC1", name.axis2="PC2",
+  title = "Damburneya gentlei vs Damburneya salicifolia",
+  colz1 = '#DDAA33', #yellow
+  colz2 = '#44AA99', #green
+  colinter = 'grey18', #grey
+  colZ1 = '#DDAA33', #yellow
+  colZ2 = '#44AA99' #green
+)
+dev.off()
+
+#plot niche similarity
+pdf(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+         "similarity_Dg_Ds_bg_S.pdf"))   
+if (FALSE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Dg_Ds $equiv,
+                                     "D", "Equivalency test")
+if (TRUE==TRUE)
+  ecospat::ecospat.plot.overlap.test(espace_nicheOv_bg_Dg_Ds$simil,
+                                     "D", "Similarity test")
+dev.off()
+
+#### write results
+
+sink(here("Modelos","soils_modelos","comparados_bg","Dg_Ds",
+          "Noverlap_Dg_Ds_bg_S.txt"))
+"Niche overlap, equivalency and similarity for D. gentlei and D. salicifolia"
+
+espace_nicheOv_bg_Dg_Ds
+
+"/n Niche overlap, equivalency and similarity for D. salicifolia and D. gentlei"    
+espace_nicheOv_bg_Ds_Dg
+
+sink()
+```
+
+
+
+### Testing nicheoverlap and size 
+
+Niche overlap and size are calculated and visualized with NicheROVER. A dataframe is necessary, with
+columns = environmental variables+ 1 (species or data source name)
+
+
+# Niche overlap for background
+Using background data
+
+
+
+```{r}
+# niche overlap plots for 95% niche region sizes
+library(tidyr)
+
+
+#create a temporary dataframe of environmental data for each species' M background points 
+
+tmp_bg_Da <-bgEnvsVals_Da[,c(1,12:17)]
+tmp_bg_Dc <-bgEnvsVals_Dc[,c(1,12:17)]
+tmp_bg_Dg <-bgEnvsVals_Dg[,c(1,12:17)]
+tmp_bg_Ds <-bgEnvsVals_Ds[,c(1,12:17)]
+
+tmp_bg_spp <- rbind(tmp_bg_Da, tmp_bg_Dc, tmp_bg_Dg, tmp_bg_Ds)
+
+
+data.par <- tapply(1:nrow(tmp_bg_spp), tmp_bg_spp$scientific_name,
+                  function(ii) niw.post(nsamples = 10000, X = tmp_bg_spp[ii,2:7]))
+
+# Overlap calculation.  use nsamples = nprob = 10000 (1e4) for higher accuracy.
+# the variable over.stat can be supplied directly to the overlap.plot function
+
+over.stat <- overlap(data.par, nreps = 10000, nprob = 1e3, alpha = c(.95, 0.99))
+
+
+
+
+#The mean overlap metrics calculated across iterations for both niche 
+#region sizes (alpha = .95 and alpha = .99) can be calculated and displayed in an array.
+over.mean <- apply(over.stat, c(1:2,4), mean)*100
+round(over.mean, 2)
+
+write.csv(over.mean,here("Modelos","soils_modelos",
+               "overlap_nROVER","mean_ovlp_BG_S.csv"))
+
+
+over.cred <- apply(over.stat*100, c(1:2, 4), quantile, prob = c(.025, .975), na.rm = TRUE)
+
+# display alpha = .95 niche region
+
+write.csv(round(over.cred[,,,1]), here("Modelos","soils_modelos",
+               "overlap_nROVER","cred_ovlp_BG_S.csv"))
+
+
+
+# posterior distribution of niche size by species
+ovlp.size <- sapply(data.par, function(spec) {
+  apply(spec$Sigma, 3, niche.size, alpha = .95)
+})
+
+
+write.csv(ovlp.size,here("Modelos","soils_modelos",
+               "overlap_nROVER","niche_size_BG_S.csv"))
+
+# point estimate and standard error
+rbind(est = colMeans(ovlp.size),
+                    se = apply(ovlp.size, 2, sd),
+                    sd= sd(ovlp.size),
+                    min = min(ovlp.size),
+                    max = max(ovlp.size),
+                    mean = mean(ovlp.size))
+
+#long format
+long.ovlp.size <- as.data.frame(ovlp.size) %>%
+  pivot_longer(1:4,names_to = "scientific_name", values_to = "niche_size")
+
+
+# Summary by group using dplyr
+ovlp_summ <- 
+  long.ovlp.size %>% 
+  group_by(scientific_name) %>% 
+   summarize(min = min(niche_size),
+             mean = mean(niche_size),
+             max = max(niche_size),
+             sd = sd(niche_size))
+
+ovlp_summ$se <- (ovlp_summ$sd)/sqrt(10000)
+
+write.csv(ovlp_summ,here("Modelos","soils_modelos",
+               "overlap_nROVER","summary_size_BG_S.csv"))
+
+
+#Plot niche size
+
+boxplot(ovlp.size, col = clrs, pch = 16, cex = .5,
+        ylab = "Niche Size", xlab = "Species")
+
+
+```
+
+
+### species niche comparissons: background areas
+
+Using nicheROVER 2-dimensional representations, explore the niche
+of10 niche regions using soil variables and Background data
+
+```{r}
+# 2-d projections of 10 niche regions
+
+library(nicheROVER)
+
+nsamples <- 10
+
+#For specified route:
+#temp<-read.csv(here("Modelos","soils_modelos","overlap_nROVER","data_env_spp.csv"))
+#tmp_bg_spp <-temp[2:8]
+
+
+#tmp_vec<-c("BG_Damburneya ambigens","BG_Damburneya colorata","BG_Damburneya gentlei","BG_Damburneya salicifolia")
+
+#tmp_bg_spp <- tmp_bg_spp[tmp_bg_spp$scientific_name %in% tmp_vec,]
+
+
+# Build a reduced dataset with only 1000 random BGability points
+# per species
+
+# Sample rows of data with Base R
+small_bg_Da <- tmp_bg_Da[sample(1:nrow(tmp_bg_Da), 1000), ]  
+small_bg_Dc <- tmp_bg_Dc[sample(1:nrow(tmp_bg_Dc), 1000), ]  
+small_bg_Dg <- tmp_bg_Dg[sample(1:nrow(tmp_bg_Dg), 1000), ]  
+small_bg_Ds <- tmp_bg_Ds[sample(1:nrow(tmp_bg_Ds), 1000), ] 
+
+small_bg_spp <- 
+ rbind(small_bg_Da, small_bg_Dc, small_bg_Dg, small_bg_Ds)
+
+small_bg_spp$scientific_name <- as.factor(small_bg_spp$scientific_name)
+
+#Rename species
+small_bg_spp$scientific_name<-sub("bg_Damburneya ", "D.",         small_bg_spp$scientific_name)
+
+
+
+#Change factor order to improve visualiation and avoid graphic overlap
+
+small_bg_spp$scientific_name<-factor(small_bg_spp$scientific_name,                                     levels=c("D.salicifolia", 
+                                         "D.ambigens", 
+                                         "D.gentlei",
+                                         "D.colorata"))
+
+#Select only the 5 most important variables and scientific names
+small_bg_spp<-small_bg_spp[,c(1:7)]
+
+
+
+#Plot only the most important variables chosen
+clrs <- c('#44AA99','#CC3311', '#DDAA33' ,'#4477AA' ) # colors for each species
+
+data.par <- tapply(1:nrow(small_bg_spp), small_bg_spp$scientific_name,
+                  function(ii) niw.post(nsamples = 10, X = small_bg_spp[ii,2:7]))
+
+# format data for plotting function
+ov.data <- tapply(1:nrow(small_bg_spp), small_bg_spp$scientific_name, function(ii) X = small_bg_spp[ii,2:7])
+
+
+
+pdf(here("Modelos","soils_modelos",
+               "overlap_nROVER","BG_spp_ovlp_VARs_S.pdf"))
+niche.plot(niche.par = data.par, niche.data = ov.data, pfrac = .05,
+            col = clrs, ndens=10)
+dev.off()
+
+
+```
+

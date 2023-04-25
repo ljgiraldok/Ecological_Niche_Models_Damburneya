@@ -1,0 +1,1403 @@
+---
+title: "Response_curves_top5_climatic-only models"
+author: "Laura J. Giraldo Kalil"
+date: '2023-02-14'
+output: html_document
+---
+
+This script summarizes the response curves for the "top 5" models
+for each Damburneya species according to the environmental variables employed to build ecological niche models with MaxEnt.
+
+It is based on the models generated in all other scripts
+using climatic data to model the niches of 
+Damburneya species (D. ambigens, D. colorata, D. gentlei, D. salicifolia).
+
+Those scripts are:
+Combined climatic and edaphic data models:    "Model_Damb_bioclimsoil_02mar23.Rmd"
+Climatic-only data models:                    "Model_Damb_bio_27feb23.Rmd"
+Edaphic-only data models:                     "Model_Damb_soils_01mar23.Rmd"
+
+It calls previously saved model files and the top 5 models previously chosen, based on delta AICc organized in decreasing order. It creates a summarized plot layout by species, and models type.
+
+First, call the required libraries
+```{r}
+
+library(spocc)
+library(spThin)
+library(dismo)
+library(rgeos)
+library(ENMeval)
+library(wallace)
+library(here)
+library(ggplot2)
+library(gridExtra)
+library(terra)
+library(ade4)
+library(dplyr)
+library(gridtext)
+library(cowplot)
+library(ggpubr)
+library(scales)
+library(rcolorutils)
+library(tidyverse)
+library(cowplot)
+```
+
+
+
+Now, call the models for all the species. In this case, climatic-only models
+```{r}
+model_Da_bio <- readRDS(here("Modelos","bio_modelos","ambigens","model_Da_bio.rds"))
+
+model_Dc_bio <- readRDS(here("Modelos","bio_modelos","colorata","model_Dc_new_bio.rds"))
+
+model_Dg_bio <- readRDS(here("Modelos","bio_modelos","gentlei","model_Dg_bio.rds"))
+
+model_Ds_bio <- readRDS(here("Modelos","bio_modelos","salicifolia","model_Ds_bio.rds"))
+
+
+```
+
+
+
+#D. ambigens
+
+
+Generate response plots and data for the top models
+MaxEnt response plots for D. ambigens are created for the chosen top 5 best models:
+Da_top1   fc.LQ_rm.1
+Da_top2   fc.LQ_rm.1.5
+Da_top3   fc.LQ_rm.2
+Da_top4   fc.LQHP_rm.3.5
+Da_top5   fc.LQ_rm.2.5
+
+Da_top1   fc.LQ_rm.1:
+```{r}
+# Generate response plots for 1sth model for D. ambigens
+
+pdf(here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top1.pdf"))
+dismo::response(
+  model_Da_bio@models$fc.LQ_rm.1,col="#CC3311",main="Da_B_top1_fc.LQ_rm.1", 
+  expand=20,fun=function(x, y, ...) 
+  predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Da_top1 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1,var="Bio_1",col="#CC3311",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. ambigens", top="top1" , model="B", key="Da_B_top1")
+Bio_4_resp_Da_top1 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1,var="Bio_4",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. ambigens", top="top1" , model="B", key="Da_B_top1")
+Bio_12_resp_Da_top1 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1,var="Bio_12",col="#CC3311",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. ambigens", top="top1" , model="B", key="Da_B_top1")
+Bio_14_resp_Da_top1 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1,var="Bio_14",col="#CC3311",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. ambigens", top="top1" , model="B", key="Da_B_top1")
+Bio_15_resp_Da_top1 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1,var="Bio_15",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. ambigens", top="top1" , model="B", key="Da_B_top1")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top1 model
+top1_models_Da_B <-rbind(Bio_1_resp_Da_top1, Bio_4_resp_Da_top1,
+                        Bio_12_resp_Da_top1, Bio_14_resp_Da_top1, 
+                        Bio_15_resp_Da_top1) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top1_models_Da_B[bio_cols] <- lapply(top1_models_Da_B[bio_cols], factor)
+
+#export response data
+write.csv(top1_models_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top1.csv"))
+
+#export model lambda
+
+lambda_top1_Da_B <- as.data.frame(model_Da_bio@models$fc.LQ_rm.1@lambdas)
+ 
+write.csv(lambda_top1_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","lambda_Da_B_top1.csv"))
+
+```
+
+Da_top2   fc.LQ_rm.1.5:
+
+```{r}
+# Generate response plots for 2nd model for D. ambigens
+
+pdf(here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top2.pdf"))
+dismo::response(
+  model_Da_bio@models$fc.LQ_rm.1.5,col="#CC3311",main="Da_B_top2_fc.LQ_rm.1.5", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Da_top2 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1.5,var="Bio_1",col="#CC3311",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. ambigens", top="top2" , model="B", key="Da_B_top2")
+Bio_4_resp_Da_top2 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1.5,var="Bio_4",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...)))  %>% mutate(var="Bio4", species="D. ambigens", top="top2" , model="B", key="Da_B_top2")
+Bio_12_resp_Da_top2 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1.5,var="Bio_12",col="#CC3311",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. ambigens", top="top2" , model="B", key="Da_B_top2")
+Bio_14_resp_Da_top2 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1.5,var="Bio_14",col="#CC3311",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. ambigens", top="top2" , model="B", key="Da_B_top2")
+Bio_15_resp_Da_top2 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.1.5,var="Bio_15",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. ambigens", top="top2" , model="B", key="Da_B_top2")
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top2 model
+top2_models_Da_B <-rbind(Bio_1_resp_Da_top2, Bio_4_resp_Da_top2,
+                        Bio_12_resp_Da_top2, Bio_14_resp_Da_top2, 
+                        Bio_15_resp_Da_top2) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top2_models_Da_B[bio_cols] <- lapply(top2_models_Da_B[bio_cols], factor)
+
+#export response data
+write.csv(top2_models_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top2.csv"))
+
+#export model lambda
+
+lambda_top2_Da_B <- as.data.frame(model_Da_bio@models$fc.LQ_rm.1.5@lambdas)
+ 
+write.csv(lambda_top2_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","lambda_Da_B_top2.csv"))
+
+```
+
+
+Da_top3   fc.LQ_rm.2:
+
+```{r}
+# Generate response plots for 3rd model for D. ambigens
+
+pdf(here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top3.pdf"))
+dismo::response(
+  model_Da_bio@models$fc.LQ_rm.2,col="#CC3311",main="Da_B_top3_fc.LQ_rm.2", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Da_top3 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2,var="Bio_1",col="#CC3311",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. ambigens", top="top3" , model="B", key="Da_B_top3")
+Bio_4_resp_Da_top3 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2,var="Bio_4",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. ambigens", top="top3" , model="B", key="Da_B_top3")
+Bio_12_resp_Da_top3 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2,var="Bio_12",col="#CC3311",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. ambigens", top="top3" , model="B", key="Da_B_top3")
+Bio_14_resp_Da_top3 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2,var="Bio_14",col="#CC3311",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. ambigens", top="top3" , model="B", key="Da_B_top3")
+Bio_15_resp_Da_top3 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2,var="Bio_15",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. ambigens", top="top3" , model="B", key="Da_B_top3")
+
+
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top3 model
+top3_models_Da_B <-rbind(Bio_1_resp_Da_top3, Bio_4_resp_Da_top3,
+                        Bio_12_resp_Da_top3, Bio_14_resp_Da_top3, 
+                        Bio_15_resp_Da_top3) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top3_models_Da_B[bio_cols] <- lapply(top3_models_Da_B[bio_cols], factor)
+
+#export response data
+write.csv(top3_models_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top3.csv"))
+
+#export model lambda
+
+lambda_top3_Da_B <- as.data.frame(model_Da_bio@models$fc.LQ_rm.2@lambdas)
+ 
+write.csv(lambda_top3_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","lambda_Da_B_top3.csv"))
+
+```
+
+
+Da_top4   fc.LQHP_rm.3.5
+
+```{r}
+# Generate response plots for 4th model for D. ambigens
+
+pdf(here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top4.pdf"))
+dismo::response(
+  model_Da_bio@models$fc.LQHP_rm.3.5,col="#CC3311",main="Da_B_top4_fc.LQHP_rm.3.5", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Da_top4 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQHP_rm.3.5,var="Bio_1",col="#CC3311",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. ambigens", top="top4" , model="B", key="Da_B_top4")
+Bio_4_resp_Da_top4 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQHP_rm.3.5,var="Bio_4",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. ambigens", top="top4" , model="B", key="Da_B_top4")
+Bio_12_resp_Da_top4 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQHP_rm.3.5,var="Bio_12",col="#CC3311",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. ambigens", top="top4" , model="B", key="Da_B_top4")
+Bio_14_resp_Da_top4 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQHP_rm.3.5,var="Bio_14",col="#CC3311",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. ambigens", top="top4" , model="B", key="Da_B_top4")
+Bio_15_resp_Da_top4 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQHP_rm.3.5,var="Bio_15",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. ambigens", top="top4" , model="B", key="Da_B_top4")
+
+```
+
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top4 model
+top4_models_Da_B <-rbind(Bio_1_resp_Da_top4, Bio_4_resp_Da_top4,
+                        Bio_12_resp_Da_top4, Bio_14_resp_Da_top4, 
+                        Bio_15_resp_Da_top4) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top4_models_Da_B[bio_cols] <- lapply(top4_models_Da_B[bio_cols], factor)
+
+#export response data
+write.csv(top4_models_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top4.csv"))
+
+#export model lambda
+lambda_top4_Da_B <- as.data.frame(model_Da_bio@models$fc.LQHP_rm.3.5@lambdas)
+ 
+write.csv(lambda_top4_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","lambda_Da_B_top4.csv"))
+
+```
+
+Da_top5   fc.LQ_rm.2.5
+
+```{r}
+# Generate response plots for 5th model for D. ambigens
+
+pdf(here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top5.pdf"))
+dismo::response(
+  model_Da_bio@models$fc.LQ_rm.2.5,col="#CC3311",main="Da_B_top5_fc.LQ_rm.2.5", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Da_top5 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2.5,var="Bio_1",col="#CC3311",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. ambigens", top="top5" , model="B", key="Da_B_top5")
+Bio_4_resp_Da_top5 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2.5,var="Bio_4",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. ambigens", top="top5" , model="B", key="Da_B_top5")
+Bio_12_resp_Da_top5 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2.5,var="Bio_12",col="#CC3311",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. ambigens", top="top5" , model="B", key="Da_B_top5")
+Bio_14_resp_Da_top5 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2.5,var="Bio_14",col="#CC3311",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. ambigens", top="top5" , model="B", key="Da_B_top5")
+Bio_15_resp_Da_top5 <- as.data.frame(dismo::response(
+   model_Da_bio@models$fc.LQ_rm.2.5,var="Bio_15",col="#CC3311",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. ambigens", top="top5" , model="B", key="Da_B_top5")
+
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top5 model
+top5_models_Da_B <-rbind(Bio_1_resp_Da_top5, Bio_4_resp_Da_top5,
+                        Bio_12_resp_Da_top5, Bio_14_resp_Da_top5, 
+                        Bio_15_resp_Da_top5) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top5_models_Da_B[bio_cols] <- lapply(top5_models_Da_B[bio_cols], factor)
+
+#export response data
+write.csv(top5_models_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","resp_Da_B_top5.csv"))
+
+#export model lambda
+
+lambda_top5_Da_B <- as.data.frame(model_Da_bio@models$fc.LQ_rm.2.5@lambdas)
+
+write.csv(lambda_top5_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","lambda_Da_B_top5.csv"))
+
+```
+
+
+
+Create and export a single data frame with all response curves data of the top 5 models for D. ambigens
+```{r}
+
+top_models_Da_B <-rbind(top1_models_Da_B,top2_models_Da_B,
+                        top3_models_Da_B,top4_models_Da_B,top5_models_Da_B)
+
+write.csv(top_models_Da_B, here("Modelos","bio_modelos","ambigens","top_Da_B","top_models_Da_B.csv"))
+
+```
+
+#D. colorata
+
+Generate response plots and data for the top models
+MaxEnt response plots for D. colorata are created for the chosen top 5 best models:
+
+Dc_top1		fc.LQP_rm.1.5
+Dc_top2		fc.LQP_rm.1
+Dc_top3		fc.LQP_rm.2
+Dc_top4		fc.LQP_rm.3
+Dc_top5		fc.LQP_rm.3.5
+
+
+Dc_top1		fc.LQP_rm.1.5
+```{r}
+# Generate response plots for 1sth model for D. colorata
+pdf(here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top1.pdf"))
+dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1.5,col="#4477AA",main="Dc_B_top1_fc.LQP_rm.1.5", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Dc_top1 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1.5,var="Bio_1",col="#4477AA",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. colorata", top="top1" , model="B", key="Dc_B_top1")
+Bio_4_resp_Dc_top1 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1.5,var="Bio_4",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. colorata", top="top1" , model="B", key="Dc_B_top1")
+Bio_12_resp_Dc_top1 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1.5,var="Bio_12",col="#4477AA",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. colorata", top="top1" , model="B", key="Dc_B_top1")
+Bio_14_resp_Dc_top1 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1.5,var="Bio_14",col="#4477AA",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. colorata", top="top1" , model="B", key="Dc_B_top1")
+Bio_15_resp_Dc_top1 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1.5,var="Bio_15",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. colorata", top="top1" , model="B", key="Dc_B_top1")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top1 model
+top1_models_Dc_B <-rbind(Bio_1_resp_Dc_top1, Bio_4_resp_Dc_top1,
+                         Bio_12_resp_Dc_top1, Bio_14_resp_Dc_top1, 
+                         Bio_15_resp_Dc_top1) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top1_models_Dc_B[bio_cols] <- lapply(top1_models_Dc_B[bio_cols], factor)
+
+#export response data
+write.csv(top1_models_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top1.csv"))
+
+#export model lambda
+
+lambDc_top1_Dc_B <- as.data.frame(model_Dc_bio@models$fc.LQP_rm.1.5@lambdas)
+
+write.csv(lambDc_top1_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","lambDc_Dc_new_B_top1.csv"))
+
+```
+
+
+Dc_top2		fc.LQP_rm.1
+```{r}
+# Generate response plots for 1sth model for D. colorata
+pdf(here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top2.pdf"))
+dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1,col="#4477AA",main="Dc_B_top2_fc.LQP_rm.1", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Dc_top2 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1,var="Bio_1",col="#4477AA",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. colorata", top="top2" , model="B", key="Dc_B_top2")
+Bio_4_resp_Dc_top2 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1,var="Bio_4",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. colorata", top="top2" , model="B", key="Dc_B_top2")
+Bio_12_resp_Dc_top2 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1,var="Bio_12",col="#4477AA",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. colorata", top="top2" , model="B", key="Dc_B_top2")
+Bio_14_resp_Dc_top2 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1,var="Bio_14",col="#4477AA",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. colorata", top="top2" , model="B", key="Dc_B_top2")
+Bio_15_resp_Dc_top2 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.1,var="Bio_15",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. colorata", top="top2" , model="B", key="Dc_B_top2")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top2 model
+top2_models_Dc_B <-rbind(Bio_1_resp_Dc_top2, Bio_4_resp_Dc_top2,
+                         Bio_12_resp_Dc_top2, Bio_14_resp_Dc_top2, 
+                         Bio_15_resp_Dc_top2) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top2_models_Dc_B[bio_cols] <- lapply(top2_models_Dc_B[bio_cols], factor)
+
+#export response data
+write.csv(top2_models_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top2.csv"))
+
+#export model lambda
+
+lambDc_top2_Dc_B <- as.data.frame(model_Dc_bio@models$fc.LQP_rm.1@lambdas)
+
+write.csv(lambDc_top2_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","lambDc_Dc_new_B_top2.csv"))
+
+```
+
+
+Dc_top3		fc.LQP_rm.2
+```{r}
+# Generate response plots for 1sth model for D. colorata
+pdf(here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top3.pdf"))
+dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.2,col="#4477AA",main="Dc_B_top3_fc.LQP_rm.2", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Dc_top3 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.2,var="Bio_1",col="#4477AA",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. colorata", top="top3" , model="B", key="Dc_B_top3")
+Bio_4_resp_Dc_top3 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.2,var="Bio_4",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. colorata", top="top3" , model="B", key="Dc_B_top3")
+Bio_12_resp_Dc_top3 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.2,var="Bio_12",col="#4477AA",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. colorata", top="top3" , model="B", key="Dc_B_top3")
+Bio_14_resp_Dc_top3 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.2,var="Bio_14",col="#4477AA",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. colorata", top="top3" , model="B", key="Dc_B_top3")
+Bio_15_resp_Dc_top3 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.2,var="Bio_15",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. colorata", top="top3" , model="B", key="Dc_B_top3")
+
+```
+
+
+
+
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top3 model
+top3_models_Dc_B <-rbind(Bio_1_resp_Dc_top3, Bio_4_resp_Dc_top3,
+                         Bio_12_resp_Dc_top3, Bio_14_resp_Dc_top3, 
+                         Bio_15_resp_Dc_top3) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top3_models_Dc_B[bio_cols] <- lapply(top3_models_Dc_B[bio_cols], factor)
+
+#export response data
+write.csv(top3_models_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top3.csv"))
+
+#export model lambda
+
+lambDc_top3_Dc_B <- as.data.frame(model_Dc_bio@models$fc.LQP_rm.2@lambdas)
+
+write.csv(lambDc_top3_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","lambDc_Dc_new_B_top3.csv"))
+
+```
+
+
+Dc_top4		fc.LQP_rm.3
+```{r}
+# Generate response plots for 1sth model for D. colorata
+pdf(here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top4.pdf"))
+dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3,col="#4477AA",main="Dc_B_top4_fc.LQP_rm.3", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Dc_top4 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3,var="Bio_1",col="#4477AA",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. colorata", top="top4" , model="B", key="Dc_B_top4")
+Bio_4_resp_Dc_top4 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3,var="Bio_4",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. colorata", top="top4" , model="B", key="Dc_B_top4")
+Bio_12_resp_Dc_top4 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3,var="Bio_12",col="#4477AA",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. colorata", top="top4" , model="B", key="Dc_B_top4")
+Bio_14_resp_Dc_top4 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3,var="Bio_14",col="#4477AA",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. colorata", top="top4" , model="B", key="Dc_B_top4")
+Bio_15_resp_Dc_top4 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3,var="Bio_15",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. colorata", top="top4" , model="B", key="Dc_B_top4")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top4 model
+top4_models_Dc_B <-rbind(Bio_1_resp_Dc_top4, Bio_4_resp_Dc_top4,
+                         Bio_12_resp_Dc_top4, Bio_14_resp_Dc_top4, 
+                         Bio_15_resp_Dc_top4) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top4_models_Dc_B[bio_cols] <- lapply(top4_models_Dc_B[bio_cols], factor)
+
+#export response data
+write.csv(top4_models_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top4.csv"))
+
+#export model lambda
+
+lambDc_top4_Dc_B <- as.data.frame(model_Dc_bio@models$fc.LQP_rm.3@lambdas)
+
+write.csv(lambDc_top4_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","lambDc_Dc_new_B_top4.csv"))
+
+```
+
+
+Dc_top5		fc.LQP_rm.3.5
+
+```{r}
+# Generate response plots for 1sth model for D. colorata
+pdf(here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top5.pdf"))
+dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3.5,col="#4477AA",main="Dc_B_top5_fc.LQP_rm.3.5", 
+  expand=20,fun=function(x, y, ...) 
+    predict(x,y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Dc_top5 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3.5,var="Bio_1",col="#4477AA",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. colorata", top="top5" , model="B", key="Dc_B_top5")
+Bio_4_resp_Dc_top5 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3.5,var="Bio_4",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. colorata", top="top5" , model="B", key="Dc_B_top5")
+Bio_12_resp_Dc_top5 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3.5,var="Bio_12",col="#4477AA",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. colorata", top="top5" , model="B", key="Dc_B_top5")
+Bio_14_resp_Dc_top5 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3.5,var="Bio_14",col="#4477AA",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. colorata", top="top5" , model="B", key="Dc_B_top5")
+Bio_15_resp_Dc_top5 <- as.data.frame(dismo::response(
+  model_Dc_bio@models$fc.LQP_rm.3.5,var="Bio_15",col="#4477AA",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. colorata", top="top5" , model="B", key="Dc_B_top5")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top5 model
+top5_models_Dc_B <-rbind(Bio_1_resp_Dc_top5, Bio_4_resp_Dc_top5,
+                         Bio_12_resp_Dc_top5, Bio_14_resp_Dc_top5, 
+                         Bio_15_resp_Dc_top5) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top5_models_Dc_B[bio_cols] <- lapply(top5_models_Dc_B[bio_cols], factor)
+
+#export response data
+write.csv(top5_models_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","resp_Dc_new_B_top5.csv"))
+
+#export model lambda
+
+lambDc_top5_Dc_B <- as.data.frame(model_Dc_bio@models$fc.LQP_rm.3.5@lambdas)
+
+write.csv(lambDc_top5_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","lambDc_Dc_new_B_top5.csv"))
+
+```
+
+
+Create and export a single data frame with all response curves data of the top 5 models for D. colorata
+```{r}
+
+top_models_Dc_B <-rbind(top1_models_Dc_B,top2_models_Dc_B,
+                        top3_models_Dc_B,top4_models_Dc_B,top5_models_Dc_B)
+
+write.csv(top_models_Dc_B, here("Modelos","bio_modelos","colorata","top_Dc_B","top_models_Dc_new_B.csv"))
+
+```
+
+
+# D. gentlei
+Generate response plots and data for the top models
+MaxEnt response plots for D. gentlei are created for the chosen top 5 best models:
+Dg_top1   fc.LQHP_rm.2
+Dg_top2   fc.LQHP_rm.3
+Dg_top3   fc.LQHP_rm.3.5
+Dg_top4   fc.LQ_rm.1
+Dg_top5   fc.LQHP_rm.2.5
+
+
+
+Dg_top1   fc.LQHP_rm.2:
+
+```{r}
+# Generate response plots for 1sth model for D. gentlei
+
+pdf(here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top1.pdf"))
+dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2,col="#DDAA33", main="Dg_B_top1_fc.LQHP_rm.2",
+   expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off ()
+
+
+Bio_1_resp_Dg_top1 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2,var="Bio_1",col="#DDAA33",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. gentlei", top="top1" , model="B", key="Dg_B_top1")
+Bio_4_resp_Dg_top1 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2,var="Bio_4",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. gentlei", top="top1" , model="B", key="Dg_B_top1")
+Bio_12_resp_Dg_top1 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2,var="Bio_12",col="#DDAA33",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. gentlei", top="top1" , model="B", key="Dg_B_top1")
+Bio_14_resp_Dg_top1 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2,var="Bio_14",col="#DDAA33",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. gentlei", top="top1" , model="B", key="Dg_B_top1")
+Bio_15_resp_Dg_top1 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2,var="Bio_15",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. gentlei", top="top1" , model="B", key="Dg_B_top1")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top1 model
+top1_models_Dg_B <-rbind(Bio_1_resp_Dg_top1, Bio_4_resp_Dg_top1,
+                        Bio_12_resp_Dg_top1, Bio_14_resp_Dg_top1, 
+                        Bio_15_resp_Dg_top1) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top1_models_Dg_B[bio_cols] <- lapply(top1_models_Dg_B[bio_cols], factor)
+
+#export response data
+write.csv(top1_models_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top1.csv"))
+
+#export model lambda
+
+lambda_top1_Dg_B <- as.data.frame(model_Dg_bio@models$fc.LQHP_rm.2@lambdas)
+ 
+write.csv(lambda_top1_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","lambda_Dg_B_top1.csv"))
+
+```
+
+
+Dg_top2   fc.LQHP_rm.3:
+```{r}
+# Generate response plots for 2nd model for D. gentlei
+
+pdf(here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top2.pdf"))
+dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3,col="#DDAA33", main="Dg_B_top2_fc.LQHP_rm.3",
+   expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off ()
+
+
+Bio_1_resp_Dg_top2 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3,var="Bio_1",col="#DDAA33",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. gentlei", top="top2" , model="B", key="Dg_B_top2")
+Bio_4_resp_Dg_top2 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3,var="Bio_4",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. gentlei", top="top2" , model="B", key="Dg_B_top2")
+Bio_12_resp_Dg_top2 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3,var="Bio_12",col="#DDAA33",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. gentlei", top="top2" , model="B", key="Dg_B_top2")
+Bio_14_resp_Dg_top2 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3,var="Bio_14",col="#DDAA33",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. gentlei", top="top2" , model="B", key="Dg_B_top2")
+Bio_15_resp_Dg_top2 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3,var="Bio_15",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. gentlei", top="top2" , model="B", key="Dg_B_top2")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top2 model
+top2_models_Dg_B <-rbind(Bio_1_resp_Dg_top2, Bio_4_resp_Dg_top2,
+                        Bio_12_resp_Dg_top2, Bio_14_resp_Dg_top2, 
+                        Bio_15_resp_Dg_top2) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top2_models_Dg_B[bio_cols] <- lapply(top2_models_Dg_B[bio_cols], factor)
+
+#export response data
+write.csv(top2_models_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top2.csv"))
+
+#export model lambda
+
+lambda_top2_Dg_B <- as.data.frame(model_Dg_bio@models$fc.LQHP_rm.3@lambdas)
+ 
+write.csv(lambda_top2_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","lambda_Dg_B_top2.csv"))
+
+```
+
+
+
+Dg_top3   fc.LQHP_rm.3.5:
+```{r}
+# Generate response plots for 3rd model for D. gentlei
+
+pdf(here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top3.pdf"))
+dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3.5,col="#DDAA33", main="Dg_B_top3_fc.LQHP_rm.3.5",
+   expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off()
+
+
+Bio_1_resp_Dg_top3 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3.5,var="Bio_1",col="#DDAA33",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. gentlei", top="top3" , model="B", key="Dg_B_top3")
+Bio_4_resp_Dg_top3 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3.5,var="Bio_4",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. gentlei", top="top3" , model="B", key="Dg_B_top3")
+Bio_12_resp_Dg_top3 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3.5,var="Bio_12",col="#DDAA33",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. gentlei", top="top3" , model="B", key="Dg_B_top3")
+Bio_14_resp_Dg_top3 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3.5,var="Bio_14",col="#DDAA33",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. gentlei", top="top3" , model="B", key="Dg_B_top3")
+Bio_15_resp_Dg_top3 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.3.5,var="Bio_15",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. gentlei", top="top3" , model="B", key="Dg_B_top3")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top3 model
+top3_models_Dg_B <-rbind(Bio_1_resp_Dg_top3, Bio_4_resp_Dg_top3,
+                        Bio_12_resp_Dg_top3, Bio_14_resp_Dg_top3, 
+                        Bio_15_resp_Dg_top3) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top3_models_Dg_B[bio_cols] <- lapply(top3_models_Dg_B[bio_cols], factor)
+
+#export response data
+write.csv(top3_models_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top3.csv"))
+
+#export model lambda
+
+lambda_top3_Dg_B <- as.data.frame(model_Dg_bio@models$fc.LQHP_rm.3.5@lambdas)
+ 
+write.csv(lambda_top3_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","lambda_Dg_B_top3.csv"))
+
+```
+
+
+
+Dg_top4   fc.LQ_rm.1:
+```{r}
+# Generate response plots for 4th model for D. gentlei
+
+pdf(here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top4.pdf"))
+dismo::response(
+   model_Dg_bio@models$fc.LQ_rm.1,col="#DDAA33", main="Dg_B_top4_fc.LQ_rm.1",
+   expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off ()
+
+
+Bio_1_resp_Dg_top4 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQ_rm.1,var="Bio_1",col="#DDAA33",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. gentlei", top="top4" , model="B", key="Dg_B_top4")
+Bio_4_resp_Dg_top4 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQ_rm.1,var="Bio_4",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. gentlei", top="top4" , model="B", key="Dg_B_top4")
+Bio_12_resp_Dg_top4 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQ_rm.1,var="Bio_12",col="#DDAA33",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. gentlei", top="top4" , model="B", key="Dg_B_top4")
+Bio_14_resp_Dg_top4 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQ_rm.1,var="Bio_14",col="#DDAA33",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. gentlei", top="top4" , model="B", key="Dg_B_top4")
+Bio_15_resp_Dg_top4 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQ_rm.1,var="Bio_15",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. gentlei", top="top4" , model="B", key="Dg_B_top4")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top4 model
+top4_models_Dg_B <-rbind(Bio_1_resp_Dg_top4, Bio_4_resp_Dg_top4,
+                        Bio_12_resp_Dg_top4, Bio_14_resp_Dg_top4, 
+                        Bio_15_resp_Dg_top4) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top4_models_Dg_B[bio_cols] <- lapply(top4_models_Dg_B[bio_cols], factor)
+
+#export response data
+write.csv(top4_models_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top4.csv"))
+
+#export model lambda
+
+lambda_top4_Dg_B <- as.data.frame(model_Dg_bio@models$fc.LQ_rm.1@lambdas)
+ 
+write.csv(lambda_top4_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","lambda_Dg_B_top4.csv"))
+
+```
+
+
+Dg_top5   fc.LQHP_rm.2.5:
+```{r}
+# Generate response plots for 5th model for D. gentlei
+
+pdf(here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top5.pdf"))
+dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2.5,col="#DDAA33", main="Dg_B_top5_fc.LQHP_rm.2.5",
+   expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off ()
+
+
+Bio_1_resp_Dg_top5 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2.5,var="Bio_1",col="#DDAA33",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. gentlei", top="top5" , model="B", key="Dg_B_top5")
+Bio_4_resp_Dg_top5 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2.5,var="Bio_4",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. gentlei", top="top5" , model="B", key="Dg_B_top5")
+Bio_12_resp_Dg_top5 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2.5,var="Bio_12",col="#DDAA33",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. gentlei", top="top5" , model="B", key="Dg_B_top5")
+Bio_14_resp_Dg_top5 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2.5,var="Bio_14",col="#DDAA33",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. gentlei", top="top5" , model="B", key="Dg_B_top5")
+Bio_15_resp_Dg_top5 <- as.data.frame(dismo::response(
+   model_Dg_bio@models$fc.LQHP_rm.2.5,var="Bio_15",col="#DDAA33",expand=100,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. gentlei", top="top5" , model="B", key="Dg_B_top5")
+
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top5 model
+top5_models_Dg_B <-rbind(Bio_1_resp_Dg_top5, Bio_4_resp_Dg_top5,
+                        Bio_12_resp_Dg_top5, Bio_14_resp_Dg_top5, 
+                        Bio_15_resp_Dg_top5) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top5_models_Dg_B[bio_cols] <- lapply(top5_models_Dg_B[bio_cols], factor)
+
+#export response data
+write.csv(top5_models_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","resp_Dg_B_top5.csv"))
+
+#export model lambda
+
+lambda_top5_Dg_B <- as.data.frame(model_Dg_bio@models$fc.LQHP_rm.2.5@lambdas)
+ 
+write.csv(lambda_top5_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","lambda_Dg_B_top5.csv"))
+
+```
+
+
+Create and export a single data frame with all response curves data of the top 5 models for D. gentlei
+```{r}
+
+top_models_Dg_B <-rbind(top1_models_Dg_B,top2_models_Dg_B,
+                        top3_models_Dg_B,top4_models_Dg_B,top5_models_Dg_B)
+
+write.csv(top_models_Dg_B, here("Modelos","bio_modelos","gentlei","top_Dg_B","top_models_Dg_B.csv"))
+
+```
+
+
+
+#D. salicifolia
+Generate response plots and data for the top models
+MaxEnt response plots for D. salicifolia are created for the chosen top 5 best models:
+
+Ds_top1   fc.LQHP_rm.2
+Ds_top2   fc.LQHP_rm.3
+Ds_top3   fc.LQHP_rm.2.5
+Ds_top4   fc.LQP_rm.1
+Ds_top5   fc.LQHP_rm.3.5
+
+
+Ds_top1   fc.LQHP_rm.2:
+
+```{r}
+
+pdf(here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top1.pdf"))
+dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2,col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Ds_top1 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2,var="Bio_1",col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. salicifolia", top="top1" , model="B", key="Ds_B_top1")
+Bio_4_resp_Ds_top1 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2,var="Bio_4",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. salicifolia", top="top1" , model="B", key="Ds_B_top1")
+Bio_12_resp_Ds_top1 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2,var="Bio_12",col="#44AA99",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. salicifolia", top="top1" , model="B", key="Ds_B_top1")
+Bio_14_resp_Ds_top1 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2,var="Bio_14",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. salicifolia", top="top1" , model="B", key="Ds_B_top1")
+Bio_15_resp_Ds_top1 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2,var="Bio_15",col="#44AA99",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. salicifolia", top="top1" , model="B", key="Ds_B_top1")
+
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top1 model
+top1_models_Ds_B <-rbind(Bio_1_resp_Ds_top1, Bio_4_resp_Ds_top1,
+                        Bio_12_resp_Ds_top1, Bio_14_resp_Ds_top1, 
+                        Bio_15_resp_Ds_top1) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top1_models_Ds_B[bio_cols] <- lapply(top1_models_Ds_B[bio_cols], factor)
+
+#export response data
+write.csv(top1_models_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top1.csv"))
+
+#export model lambda
+
+lambda_top1_Ds_B <- as.data.frame(model_Ds_bio@models$fc.LQHP_rm.2@lambdas)
+ 
+write.csv(lambda_top1_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","lambda_Ds_B_top1.csv"))
+
+```
+
+
+
+Ds_top2   fc.LQHP_rm.3:
+
+```{r}
+pdf(here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top2.pdf"))
+dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3
+,col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Ds_top2 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3
+,var="Bio_1",col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. salicifolia", top="top2" , model="B", key="Ds_B_top2")
+Bio_4_resp_Ds_top2 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3
+,var="Bio_4",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. salicifolia", top="top2" , model="B", key="Ds_B_top2")
+Bio_12_resp_Ds_top2 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3
+,var="Bio_12",col="#44AA99",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. salicifolia", top="top2" , model="B", key="Ds_B_top2")
+Bio_14_resp_Ds_top2 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3
+,var="Bio_14",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. salicifolia", top="top2" , model="B", key="Ds_B_top2")
+Bio_15_resp_Ds_top2 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3
+,var="Bio_15",col="#44AA99",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. salicifolia", top="top2" , model="B", key="Ds_B_top2")
+
+```
+
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top2 model
+top2_models_Ds_B <-rbind(Bio_1_resp_Ds_top2, Bio_4_resp_Ds_top2,
+                        Bio_12_resp_Ds_top2, Bio_14_resp_Ds_top2, 
+                        Bio_15_resp_Ds_top2) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top2_models_Ds_B[bio_cols] <- lapply(top2_models_Ds_B[bio_cols], factor)
+
+#export response data
+write.csv(top2_models_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top2.csv"))
+
+#export model lambda
+
+lambda_top2_Ds_B <- as.data.frame(model_Ds_bio@models$fc.LQHP_rm.3@lambdas)
+ 
+write.csv(lambda_top2_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","lambda_Ds_B_top2.csv"))
+
+```
+
+
+
+Ds_top3   fc.LQHP_rm.2.5:
+
+```{r}
+
+pdf(here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top3.pdf"))
+dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2.5
+,col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Ds_top3 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2.5
+,var="Bio_1",col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. salicifolia", top="top3" , model="B", key="Ds_B_top3")
+Bio_4_resp_Ds_top3 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2.5
+,var="Bio_4",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. salicifolia", top="top3" , model="B", key="Ds_B_top3")
+Bio_12_resp_Ds_top3 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2.5
+,var="Bio_12",col="#44AA99",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. salicifolia", top="top3" , model="B", key="Ds_B_top3")
+Bio_14_resp_Ds_top3 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2.5
+,var="Bio_14",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. salicifolia", top="top3" , model="B", key="Ds_B_top3")
+Bio_15_resp_Ds_top3 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.2.5
+,var="Bio_15",col="#44AA99",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. salicifolia", top="top3" , model="B", key="Ds_B_top3")
+
+```
+
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top3 model
+top3_models_Ds_B <-rbind(Bio_1_resp_Ds_top3, Bio_4_resp_Ds_top3,
+                        Bio_12_resp_Ds_top3, Bio_14_resp_Ds_top3, 
+                        Bio_15_resp_Ds_top3) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top3_models_Ds_B[bio_cols] <- lapply(top3_models_Ds_B[bio_cols], factor)
+
+#export response data
+write.csv(top3_models_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top3.csv"))
+
+#export model lambda
+
+lambda_top3_Ds_B <- as.data.frame(model_Ds_bio@models$fc.LQHP_rm.2.5@lambdas)
+ 
+write.csv(lambda_top3_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","lambda_Ds_B_top3.csv"))
+
+```
+
+
+Ds_top4   fc.LQP_rm.1:
+
+```{r}
+pdf(here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top4.pdf"))
+dismo::response(
+   model_Ds_bio@models$fc.LQP_rm.1
+,col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Ds_top4 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQP_rm.1
+,var="Bio_1",col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. salicifolia", top="top4" , model="B", key="Ds_B_top4")
+Bio_4_resp_Ds_top4 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQP_rm.1
+,var="Bio_4",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. salicifolia", top="top4" , model="B", key="Ds_B_top4")
+Bio_12_resp_Ds_top4 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQP_rm.1
+,var="Bio_12",col="#44AA99",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. salicifolia", top="top4" , model="B", key="Ds_B_top4")
+Bio_14_resp_Ds_top4 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQP_rm.1
+,var="Bio_14",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. salicifolia", top="top4" , model="B", key="Ds_B_top4")
+Bio_15_resp_Ds_top4 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQP_rm.1
+,var="Bio_15",col="#44AA99",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. salicifolia", top="top4" , model="B", key="Ds_B_top4")
+
+```
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top4 model
+top4_models_Ds_B <-rbind(Bio_1_resp_Ds_top4, Bio_4_resp_Ds_top4,
+                        Bio_12_resp_Ds_top4, Bio_14_resp_Ds_top4, 
+                        Bio_15_resp_Ds_top4) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top4_models_Ds_B[bio_cols] <- lapply(top4_models_Ds_B[bio_cols], factor)
+
+#export response data
+write.csv(top4_models_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top4.csv"))
+
+#export model lambda
+
+lambda_top4_Ds_B <- as.data.frame(model_Ds_bio@models$fc.LQP_rm.1@lambdas)
+ 
+write.csv(lambda_top4_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","lambda_Ds_B_top4.csv"))
+
+```
+
+
+
+Ds_top5   fc.LQHP_rm.3.5:
+
+```{r}
+pdf(here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top5.pdf"))
+dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3.5
+,col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))
+dev.off()
+
+Bio_1_resp_Ds_top5 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3.5
+,var="Bio_1",col="#44AA99",expand=20,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio1", species="D. salicifolia", top="top5" , model="B", key="Ds_B_top5")
+Bio_4_resp_Ds_top5 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3.5
+,var="Bio_4",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio4", species="D. salicifolia", top="top5" , model="B", key="Ds_B_top5")
+Bio_12_resp_Ds_top5 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3.5
+,var="Bio_12",col="#44AA99",expand=1000,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio12", species="D. salicifolia", top="top5" , model="B", key="Ds_B_top5")
+Bio_14_resp_Ds_top5 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3.5
+,var="Bio_14",col="#44AA99",fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio14", species="D. salicifolia", top="top5" , model="B", key="Ds_B_top5")
+Bio_15_resp_Ds_top5 <- as.data.frame(dismo::response(
+   model_Ds_bio@models$fc.LQHP_rm.3.5
+,var="Bio_15",col="#44AA99",expand=50,fun=function(x, y, ...) predict(x, y, args="doclamp=FALSE", ...))) %>% mutate(var="Bio15", species="D. salicifolia", top="top5" , model="B", key="Ds_B_top5")
+
+```
+
+
+Export useful information from the model: response data and lambda
+```{r}
+
+#join response data for variables of top5 model
+top5_models_Ds_B <-rbind(Bio_1_resp_Ds_top5, Bio_4_resp_Ds_top5,
+                        Bio_12_resp_Ds_top5, Bio_14_resp_Ds_top5, 
+                        Bio_15_resp_Ds_top5) 
+
+#factorize categorical columns
+bio_cols <- c("var","species","top","model","key")
+top5_models_Ds_B[bio_cols] <- lapply(top5_models_Ds_B[bio_cols], factor)
+
+#export response data
+write.csv(top5_models_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","resp_Ds_B_top5.csv"))
+
+#export model lambda
+
+lambda_top5_Ds_B <- as.data.frame(model_Ds_bio@models$fc.LQHP_rm.3.5@lambdas)
+ 
+write.csv(lambda_top5_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","lambda_Ds_B_top5.csv"))
+
+```
+
+
+
+Create and export a single data frame with all response curves data of the top 5 models for D. salicifolia
+```{r}
+
+top_models_Ds_B <-rbind(top1_models_Ds_B,top2_models_Ds_B,
+                        top3_models_Ds_B,top4_models_Ds_B,top5_models_Ds_B)
+
+write.csv(top_models_Ds_B, here("Modelos","bio_modelos","salicifolia","top_Ds_B","top_models_Ds_B.csv"))
+
+```
+
+
+
+Create and export a single data frame with all response curves data of the top 5 models for all species
+```{r}
+#concatenate all models for all species in a single dataframe
+top_models_all_B <-rbind(top_models_Da_B,
+                         top_models_Dc_B,
+                         top_models_Dg_B,
+                         top_models_Ds_B)
+
+write.csv(top_models_all_B,here("Modelos","bio_modelos",
+                         "resp_top_models_all_new_B.csv"))
+
+```
+
+Edit data frame for plotting
+```{r}
+
+top_models_all_B <- 
+  read.csv(here("Modelos","bio_modelos",
+                         "resp_top_models_all_new_B.csv"))
+
+#add the model name to the top 5 models based on a summary file
+library(readxl)
+tmp_summary_top <- read_xlsx(here("Modelos","TOP_modelos", "Resumen_top5_modelos.xlsx"))
+colnames(tmp_summary_top)
+
+cols_tmp <- c("ID","Model_data","model_key","Species","sp_key",
+              "fc","rm","top","tune.args","key")
+tmp_summary_top[cols_tmp] <- lapply(tmp_summary_top[cols_tmp], factor)
+
+
+tmp_models <- subset(tmp_summary_top, Model_data %in% c("Climatic-only"))
+tmp_models <- tmp_models[,c("key","tune.args")]
+
+#Call the top5 response dataframe and add columns with model name
+
+top_models_all_B <- 
+  left_join(top_models_all_B,tmp_models, by="key")
+
+```
+
+
+## Response plots edition
+Response plot layout of the top 5 models by species and model, in ggplot
+
+
+
+Create de plots for each variable with a plotting function
+
+
+```{r}
+#Reorder variables to avoid alphabetic order display
+
+#top_models_all_B <- read.csv(here(
+ # "Modelos","bio_modelos","resp_top_models_all_B.csv"))
+
+neworder <- c("Bio1","Bio4","Bio12","Bio14","Bio15")
+
+datos <- arrange(transform(top_models_all_B,
+                           var=factor(var,levels=neworder)),var)
+
+
+
+cols_tmp <- c("model","species","key",
+             "top","tune.args")
+datos[cols_tmp] <- lapply(datos[cols_tmp], factor)
+
+# exclude data below or above the desired range in the layout
+library(skimr)
+skim(datos)
+
+#exclude values lower than 0
+datos <- datos[datos$V1 >= 0,]
+
+datos$key_mod <- as.factor(paste0(datos$key," ",datos$tune.args))
+
+
+#Create plots
+
+#Crear una versión manual de viridis
+vir_pal<- c("#fde725","#5ec962","#21918c","#3b528b","#440154")
+
+#otra paleta blind friendly
+EVAL_palette <- c( '#4477AA', '#EE6677', '#228833', '#CCBB44', '#66CCEE', '#AA3377', '#BBBBBB')
+
+
+# Bio1
+Bio1_plots<- 
+  ggplot(filter(datos, var=="Bio1"), aes(x=V1, y=p, color=top)) +
+    geom_line(linewidth = 1)+
+    labs(colour = "top", x="Bio1")+
+    theme_classic()+ 
+  scale_color_manual(values=vir_pal)+
+    coord_cartesian(ylim=c(0,1))+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1))+
+    xlim(0,40)+
+    facet_wrap(~ species, scales="free", ncol=1)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal")
+
+Bio1_plots
+
+#Bio4
+Bio4_plots<- 
+  ggplot(filter(datos, var=="Bio4"), aes(x=V1, y=p, color=top)) +
+    geom_line(linewidth = 1)+
+    labs(colour = "top", x="Bio4")+
+    theme_classic()+ 
+  scale_color_manual(values=vir_pal)+
+    coord_cartesian(ylim=c(0,1))+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1))+
+    xlim(0,500)+
+    facet_wrap(~ species, scales="free", ncol=1)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal")
+
+Bio4_plots
+
+
+#Bio12
+Bio12_plots<- 
+  ggplot(filter(datos, var=="Bio12"), aes(x=V1, y=p, color=top)) +
+    geom_line(linewidth = 1)+
+    labs(colour = "top", x="Bio12")+
+    theme_classic()+ 
+  scale_color_manual(values=vir_pal)+
+    coord_cartesian(ylim=c(0,1))+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1))+
+    xlim(0,5000)+
+    facet_wrap(~ species, scales="free", ncol=1)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal")
+
+Bio12_plots
+
+#Bio14
+Bio14_plots<- 
+  ggplot(filter(datos, var=="Bio14"), aes(x=V1, y=p, color=top)) +
+    geom_line(linewidth = 1)+
+    labs(colour = "top", x="Bio14")+
+    theme_classic()+ 
+  scale_color_manual(values=vir_pal)+
+    coord_cartesian(ylim=c(0,1))+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1))+
+    xlim(0,175)+
+    facet_wrap(~ species, scales="free", ncol=1)+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(face="italic", size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_blank(),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal")
+
+Bio14_plots
+
+#Bio15
+Bio15_plots<- 
+  ggplot(filter(datos, var=="Bio15"), aes(x=V1, y=p, color=top)) +
+    geom_line(linewidth = 1)+
+    labs(colour = "top", x="Bio15")+
+    theme_classic()+ 
+  scale_color_manual(values=vir_pal)+
+    coord_cartesian(ylim=c(0,1))+
+    scale_y_continuous(labels = label_number(accuracy = 0.1),
+                     breaks = c(0, 0.5, 1))+
+    xlim(0,150)+
+    facet_wrap(~ species, scales="free", ncol=1, 
+               strip.position="right")+
+    theme(legend.position = "none",
+          legend.title=element_blank(),
+          legend.text = element_text(size=8),
+          axis.text = element_text(size = 8),
+          axis.title= element_text(size= 9),
+          axis.title.y = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_text(face="italic"),
+          plot.margin = unit(c(0,0,0,0), "cm"),
+          legend.box = "horizontal")
+
+Bio15_plots
+
+#Extract common legend
+library(rlang)
+
+legend_summ <- get_legend(
+  Bio15_plots + 
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.justification="center" ,
+          legend.box.just = "bottom"))
+
+
+while (!is.null(dev.list()))  dev.off()
+graphics.off()
+
+```
+Create a single figure to summarize top5 model response curves and export it
+```{r}
+
+#Export new summary figure
+summary_fig <- plot_grid(Bio1_plots,
+                        Bio4_plots,
+                        Bio12_plots,
+                        Bio14_plots,
+                        Bio15_plots,
+                        legend_summ,
+                        ncol = 5, nrow= 2, 
+                        axis="l", rel_widths=1,
+                        rel_heights=c(1,0.2), 
+                        align="v", hjust=1, 
+                        vjus=0.2)
+
+path_save<-here("Modelos","TOP_modelos")
+
+ggsave('summary_resp_top_new_B.pdf',
+       plot= summary_fig, 
+       width=7, height=5,
+       dpi=600,
+       units="in",
+       path= path_save,
+       device="pdf")
+
+```
+
+
