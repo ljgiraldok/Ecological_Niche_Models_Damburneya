@@ -7,7 +7,9 @@ Climatic data were obtained from WorldClim (19 bioclimatic variables), and edaph
 The scripts are named according to the data set employed for niche models as follows
 
 Combined climatic and edaphic data:   "Model_Damb_bioclimsoil_02mar23.Rmd"
+
 Climatic-only data:                   "Model_Damb_bio_27feb23.Rmd"
+
 Edaphic-only data:                    "Model_Damb_soils_01mar23.Rmd"
 
 The main results of the manuscript were generated with these scripts. The environmental raster layers were processed with ArcMap, and the species occurrence data can be found in the Supplementary material, in the Appendix S2.
